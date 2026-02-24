@@ -25,6 +25,134 @@ const DEFAULT_SHIFT_CONFIG = {
     deductionPerMinute: 1,
 };
 
+// ============================================
+// WDD Shop Shift Configs (position-based)
+// Position detected from last word of employee name
+// Shift (1 or 2) detected from first scan time each day
+// ============================================
+const WDD_SHIFT_CONFIGS = {
+    // ตำแหน่ง เสิร์ฟ - กะ 1 - วันจันทร์-ศุกร์
+    'เสิร์ฟ_1_weekday': {
+        shift1Start: "06:00", shift1End: "11:30", shift1Deadline: "10:00",
+        shift2Start: "12:00", shift2End: "15:00",
+        shift3Start: "13:00", shift3End: "17:00",
+        shift4Start: "20:00", shift4End: "03:00",
+        hasBreak: true,
+        breakOutFixed: "13:30", breakInDeadline: "15:30",
+        deductionPerMinute: 1,
+    },
+    // ตำแหน่ง เสิร์ฟ - กะ 1 - วันเสาร์-อาทิตย์/วันนักขัตฤกษ์
+    'เสิร์ฟ_1_weekend': {
+        shift1Start: "06:00", shift1End: "11:30", shift1Deadline: "10:00",
+        shift2Start: "11:30", shift2End: "14:00",
+        shift3Start: "13:00", shift3End: "16:00",
+        shift4Start: "20:00", shift4End: "03:00",
+        hasBreak: true,
+        breakOutFixed: "13:00", breakInDeadline: "14:30",
+        deductionPerMinute: 1,
+    },
+    // ตำแหน่ง เสิร์ฟ - กะ 2 - วันจันทร์-ศุกร์ (ไม่มีพัก)
+    'เสิร์ฟ_2_weekday': {
+        shift1Start: "09:00", shift1End: "14:00", shift1Deadline: "12:00",
+        shift2Start: null, shift2End: null,
+        shift3Start: null, shift3End: null,
+        shift4Start: "20:00", shift4End: "03:00",
+        hasBreak: false,
+        breakOutFixed: null, breakInDeadline: null,
+        deductionPerMinute: 1,
+    },
+    // ตำแหน่ง เสิร์ฟ - กะ 2 - วันเสาร์-อาทิตย์/วันนักขัตฤกษ์
+    'เสิร์ฟ_2_weekend': {
+        shift1Start: "06:00", shift1End: "11:30", shift1Deadline: "10:00",
+        shift2Start: "13:00", shift2End: "16:00",
+        shift3Start: "14:00", shift3End: "18:00",
+        shift4Start: "20:00", shift4End: "03:00",
+        hasBreak: true,
+        breakOutFixed: "14:30", breakInDeadline: "16:00",
+        deductionPerMinute: 1,
+    },
+    // ตำแหน่ง เดิน - กะ 1 (ทุกวัน)
+    'เดิน_1': {
+        shift1Start: "06:00", shift1End: "11:30", shift1Deadline: "10:00",
+        shift2Start: "11:30", shift2End: "14:00",
+        shift3Start: "13:00", shift3End: "16:00",
+        shift4Start: "20:00", shift4End: "03:00",
+        hasBreak: true,
+        breakOutFixed: "13:00", breakInDeadline: "14:30",
+        deductionPerMinute: 1,
+    },
+    // ตำแหน่ง เดิน - กะ 2 (ทุกวัน)
+    'เดิน_2': {
+        shift1Start: "06:00", shift1End: "11:30", shift1Deadline: "10:00",
+        shift2Start: "13:00", shift2End: "16:00",
+        shift3Start: "14:00", shift3End: "18:00",
+        shift4Start: "20:00", shift4End: "03:00",
+        hasBreak: true,
+        breakOutFixed: "14:30", breakInDeadline: "16:00",
+        deductionPerMinute: 1,
+    },
+    // ตำแหน่ง ครัว - กะ 1 (ทุกวัน)
+    'ครัว_1': {
+        shift1Start: "06:00", shift1End: "11:30", shift1Deadline: "10:00",
+        shift2Start: "12:00", shift2End: "15:00",
+        shift3Start: "13:30", shift3End: "17:00",
+        shift4Start: "20:00", shift4End: "03:00",
+        hasBreak: true,
+        breakOutFixed: "13:30", breakInDeadline: "15:00",
+        deductionPerMinute: 1,
+    },
+    // ตำแหน่ง ครัว - กะ 2 (ทุกวัน)
+    'ครัว_2': {
+        shift1Start: "06:00", shift1End: "11:30", shift1Deadline: "10:00",
+        shift2Start: "13:30", shift2End: "16:30",
+        shift3Start: "15:00", shift3End: "18:30",
+        shift4Start: "20:00", shift4End: "03:00",
+        hasBreak: true,
+        breakOutFixed: "15:00", breakInDeadline: "16:30",
+        deductionPerMinute: 1,
+    },
+};
+
+// Detect WDD position from employee name (last word)
+function detectWddPosition(empName) {
+    if (!empName) return null;
+    const name = empName.trim();
+    if (name.endsWith('ครัว')) return 'ครัว';
+    if (name.endsWith('เดิน')) return 'เดิน';
+    if (name.endsWith('เสิร์ฟ')) return 'เสิร์ฟ';
+    return null;
+}
+
+// Detect shift number from first scan time (< 11:00 = กะ 1, >= 11:00 = กะ 2)
+function detectWddShiftNum(firstScanTime) {
+    if (!firstScanTime) return 1;
+    const min = timeToMinutes(firstScanTime);
+    return min < timeToMinutes('11:00') ? 1 : 2;
+}
+
+// Check if date is weekend (Saturday=6, Sunday=0)
+function isWeekend(isoDate) {
+    const d = new Date(isoDate);
+    const dow = d.getDay();
+    return dow === 0 || dow === 6;
+}
+
+// Get WDD shift config for a specific employee and date, given first scan time
+function getWddDayConfig(empName, isoDate, firstScanTime) {
+    const position = detectWddPosition(empName);
+    if (!position) return null;
+    const shiftNum = detectWddShiftNum(firstScanTime);
+    const weekend = isWeekend(isoDate);
+
+    // เดิน และ ครัว ไม่แยก weekday/weekend
+    if (position === 'เดิน' || position === 'ครัว') {
+        return WDD_SHIFT_CONFIGS[`${position}_${shiftNum}`] || null;
+    }
+    // เสิร์ฟ แยก weekday/weekend
+    const dayType = weekend ? 'weekend' : 'weekday';
+    return WDD_SHIFT_CONFIGS[`${position}_${shiftNum}_${dayType}`] || null;
+}
+
 function buddhistToCE(buddhistYear) {
     return buddhistYear - 543;
 }

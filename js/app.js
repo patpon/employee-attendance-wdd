@@ -389,7 +389,7 @@ async function processImport() {
 
             if (empScans.length === 0) continue;
 
-            const attendance = processEmployeeAttendance(employee, empScans, shopName, month, year);
+            const attendance = processEmployeeAttendanceWDD(employee, empScans, shopName, month, year);
             await api.saveAttendance(attendance);
             processedCount++;
         }
@@ -520,7 +520,7 @@ async function reprocessAttendance() {
             if (!employee) continue;
             processedCount++;
             statusEl.textContent = `กำลังประมวลผล ${processedCount}/${totalEmp} คน...`;
-            const attendance = processEmployeeAttendance(employee, empScans, shopName, month, year);
+            const attendance = processEmployeeAttendanceWDD(employee, empScans, shopName, month, year);
             await api.saveAttendance(attendance);
         }
 
@@ -705,27 +705,39 @@ function toggleHoliday(rIdx, dayIdx) {
 function updateScanTime(rIdx, dayIdx, scanNum, value) {
     const record = attendanceRecords[rIdx];
     const day = record.days[dayIdx];
-    const config = record.shiftConfig;
-    const deductRate = config.deductionPerMinute || 1;
+    const baseConfig = record.shiftConfig;
+    const deductRate = (baseConfig && baseConfig.deductionPerMinute) || 1;
 
     // Update the scan value
     day['scan' + scanNum] = value || null;
 
-    // Recalculate break deadline per round: A=14:30, B=15:00, C=16:00, D=16:30
-    // If scan2+1.5hrs exceeds fixed DL, use calculated value
+    // Resolve per-day config: WDD position-based or legacy
+    const wddConfig = getWddDayConfig(record.empName, day.date, day.scan1 || value || null);
+    const config = wddConfig || baseConfig;
+
+    // Recalculate break deadline
+    let breakDL = null;
     if (day.scan2) {
-        const outMin = timeToMinutes(day.scan2);
-        const calcDeadline = outMin + (config.breakDurationMinutes || 90);
-        let round, fixedDL;
-        if (outMin < timeToMinutes('13:15')) { round = 'A'; fixedDL = timeToMinutes('14:30'); }
-        else if (outMin < timeToMinutes('14:00')) { round = 'B'; fixedDL = timeToMinutes('15:00'); }
-        else if (outMin < timeToMinutes('14:45')) { round = 'C'; fixedDL = timeToMinutes('16:00'); }
-        else { round = 'D'; fixedDL = timeToMinutes('16:30'); }
-        const deadlineMin = Math.max(calcDeadline, fixedDL);
-        const h = Math.floor(deadlineMin / 60);
-        const m = deadlineMin % 60;
-        const breakDL = h.toString().padStart(2, '0') + ':' + m.toString().padStart(2, '0');
-        day.breakRound = round + ' (DL ' + breakDL + ')';
+        if (config.breakInDeadline) {
+            // WDD: fixed break-in deadline from config
+            breakDL = config.breakInDeadline;
+            const shiftNum = detectWddShiftNum(day.scan1);
+            day.breakRound = `กะ${shiftNum} (DL ${breakDL})`;
+        } else {
+            // Legacy: round A/B/C/D
+            const outMin = timeToMinutes(day.scan2);
+            const calcDeadline = outMin + (config.breakDurationMinutes || 90);
+            let round, fixedDL;
+            if (outMin < timeToMinutes('13:15')) { round = 'A'; fixedDL = timeToMinutes('14:30'); }
+            else if (outMin < timeToMinutes('14:00')) { round = 'B'; fixedDL = timeToMinutes('15:00'); }
+            else if (outMin < timeToMinutes('14:45')) { round = 'C'; fixedDL = timeToMinutes('16:00'); }
+            else { round = 'D'; fixedDL = timeToMinutes('16:30'); }
+            const deadlineMin = Math.max(calcDeadline, fixedDL);
+            const h = Math.floor(deadlineMin / 60);
+            const m = deadlineMin % 60;
+            breakDL = h.toString().padStart(2, '0') + ':' + m.toString().padStart(2, '0');
+            day.breakRound = round + ' (DL ' + breakDL + ')';
+        }
     } else {
         day.breakRound = null;
     }
@@ -736,21 +748,7 @@ function updateScanTime(rIdx, dayIdx, scanNum, value) {
     day.late1Baht = late1.baht;
 
     // Recalculate late2 (scan3 vs break deadline)
-    let late2 = { minutes: 0, baht: 0 };
-    if (day.scan2) {
-        const outMin = timeToMinutes(day.scan2);
-        const calcDeadline = outMin + (config.breakDurationMinutes || 90);
-        let fixedDL;
-        if (outMin < timeToMinutes('13:15')) fixedDL = timeToMinutes('14:30');
-        else if (outMin < timeToMinutes('14:00')) fixedDL = timeToMinutes('15:00');
-        else if (outMin < timeToMinutes('14:45')) fixedDL = timeToMinutes('16:00');
-        else fixedDL = timeToMinutes('16:30');
-        const deadlineMin = Math.max(calcDeadline, fixedDL);
-        const h = Math.floor(deadlineMin / 60);
-        const m = deadlineMin % 60;
-        const breakDL = h.toString().padStart(2, '0') + ':' + m.toString().padStart(2, '0');
-        late2 = calculateLateness(day.scan3, breakDL, deductRate);
-    }
+    const late2 = breakDL ? calculateLateness(day.scan3, breakDL, deductRate) : { minutes: 0, baht: 0 };
     day.late2Minutes = late2.minutes;
     day.late2Baht = late2.baht;
 

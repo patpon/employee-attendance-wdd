@@ -74,23 +74,27 @@ function findLastScan(scans, windowStart, windowEnd, usedIndices) {
 
 function assignScansToShifts(scans, config) {
     if (!scans || scans.length === 0) {
-        return { scan1: null, scan2: null, scan3: null, scan4: null, breakRound: null };
+        return { scan1: null, scan2: null, scan3: null, scan4: null, breakRound: null, breakDeadline: null };
     }
 
     const usedIndices = new Set();
 
     // Scan 1: เข้างาน - earliest scan in window
     let r1 = findFirstScan(scans, config.shift1Start, config.shift1End, usedIndices);
-    // Fallback: ถ้าหาใน window ไม่เจอ ให้ใช้ scan แรกสุดก่อนเวลาออกพัก (03:00 - shift2Start)
-    if (!r1.scan) r1 = findFirstScan(scans, '03:00', config.shift2Start, usedIndices);
+    // Fallback: ถ้าหาใน window ไม่เจอ ให้ใช้ scan แรกสุดก่อนเวลาออกพัก
+    if (!r1.scan && config.shift2Start) r1 = findFirstScan(scans, '03:00', config.shift2Start, usedIndices);
     if (r1.index >= 0) usedIndices.add(r1.index);
 
-    // Scan 2: ออกพัก - earliest scan in break-out window
-    const r2 = findFirstScan(scans, config.shift2Start, config.shift2End, usedIndices);
+    // Scan 2: ออกพัก - earliest scan in break-out window (ถ้ามีพัก)
+    const r2 = (config.hasBreak !== false && config.shift2Start)
+        ? findFirstScan(scans, config.shift2Start, config.shift2End, usedIndices)
+        : { scan: null, index: -1 };
     if (r2.index >= 0) usedIndices.add(r2.index);
 
-    // Scan 3: กลับจากพัก - earliest scan in break-in window (after scan2)
-    const r3 = findFirstScan(scans, config.shift3Start, config.shift3End, usedIndices);
+    // Scan 3: กลับจากพัก - earliest scan in break-in window (ถ้ามีพัก)
+    const r3 = (config.hasBreak !== false && config.shift3Start)
+        ? findFirstScan(scans, config.shift3Start, config.shift3End, usedIndices)
+        : { scan: null, index: -1 };
     if (r3.index >= 0) usedIndices.add(r3.index);
 
     // Scan 4: เลิกงาน - latest scan in window (cross-midnight supported)
@@ -107,22 +111,30 @@ function assignScansToShifts(scans, config) {
         r4 = { scan: bestScan, index: bestIndex };
     }
 
-    // Break deadline per round (fixed DL, but if scan2+1.5hrs exceeds it, use calculated)
-    // A: DL 14:30, B: DL 15:00, C: DL 16:00, D: DL 16:30
+    // Break deadline logic:
+    // If config has breakInDeadline (WDD), use it directly.
+    // Otherwise fall back to legacy round A/B/C/D logic.
     let breakDeadline = null;
     let breakRound = null;
     if (r2.scan) {
-        const outMin = timeToMinutes(r2.scan.time);
-        const calcDeadline = outMin + (config.breakDurationMinutes || 90);
-        let fixedDL;
-        if (outMin < timeToMinutes('13:15')) { breakRound = 'A'; fixedDL = timeToMinutes('14:30'); }
-        else if (outMin < timeToMinutes('14:00')) { breakRound = 'B'; fixedDL = timeToMinutes('15:00'); }
-        else if (outMin < timeToMinutes('14:45')) { breakRound = 'C'; fixedDL = timeToMinutes('16:00'); }
-        else { breakRound = 'D'; fixedDL = timeToMinutes('16:30'); }
-        const deadlineMin = Math.max(calcDeadline, fixedDL);
-        const h = Math.floor(deadlineMin / 60);
-        const m = deadlineMin % 60;
-        breakDeadline = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+        if (config.breakInDeadline) {
+            // WDD: fixed deadline from config
+            breakDeadline = config.breakInDeadline;
+            breakRound = config.breakOutFixed || null;
+        } else {
+            // Legacy: round A/B/C/D based on break-out time
+            const outMin = timeToMinutes(r2.scan.time);
+            const calcDeadline = outMin + (config.breakDurationMinutes || 90);
+            let fixedDL;
+            if (outMin < timeToMinutes('13:15')) { breakRound = 'A'; fixedDL = timeToMinutes('14:30'); }
+            else if (outMin < timeToMinutes('14:00')) { breakRound = 'B'; fixedDL = timeToMinutes('15:00'); }
+            else if (outMin < timeToMinutes('14:45')) { breakRound = 'C'; fixedDL = timeToMinutes('16:00'); }
+            else { breakRound = 'D'; fixedDL = timeToMinutes('16:30'); }
+            const deadlineMin = Math.max(calcDeadline, fixedDL);
+            const h = Math.floor(deadlineMin / 60);
+            const m = deadlineMin % 60;
+            breakDeadline = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+        }
     }
 
     return {
@@ -237,5 +249,138 @@ function processEmployeeAttendance(employee, scans, shopName, month, year) {
         totalDeduction: totalLate1 + totalLate2,
         days,
         shiftConfig: config,
+    };
+}
+
+// ============================================
+// WDD-specific attendance processor
+// Detects shift config per-day based on:
+//   - Employee name suffix (position: ครัว/เดิน/เสิร์ฟ)
+//   - First scan time (< 11:00 = กะ 1, >= 11:00 = กะ 2)
+//   - Day of week (weekday/weekend for เสิร์ฟ only)
+// Falls back to processEmployeeAttendance() for non-WDD positions
+// ============================================
+function processEmployeeAttendanceWDD(employee, scans, shopName, month, year) {
+    // If employee has no WDD position in name, use standard processing
+    if (!detectWddPosition(employee.name)) {
+        return processEmployeeAttendance(employee, scans, shopName, month, year);
+    }
+
+    const baseConfig = employee.shiftConfig;
+    const deductRate = (baseConfig && baseConfig.deductionPerMinute) || 1;
+    const monthKey = `${year}-${month.toString().padStart(2, '0')}`;
+    const holidayDates = (employee.holidays && employee.holidays[monthKey]) || [];
+    const allDates = getMonthDates(year, month);
+    const scansByDate = groupScansByDate(scans);
+
+    const days = [];
+    let totalHolidays = 0, totalAbsent = 0, totalLeave = 0, totalWorkingDays = 0;
+    let totalLate1 = 0, totalLate2 = 0;
+
+    for (const date of allDates) {
+        const dayDate = new Date(date);
+        const dayOfWeek = THAI_DAYS[dayDate.getDay()];
+        const dayScans = scansByDate[date] || [];
+        const isHoliday = holidayDates.includes(date) && dayScans.length === 0;
+
+        if (isHoliday) {
+            totalHolidays++;
+            days.push({
+                date, dayOfWeek, isHoliday: true, isAbsent: false, isLeave: false,
+                scan1: null, scan2: null, scan3: null, scan4: null,
+                breakRound: null,
+                late1Minutes: 0, late1Baht: 0, late2Minutes: 0, late2Baht: 0,
+                note: '', specialNote: '',
+            });
+            continue;
+        }
+
+        if (dayScans.length === 0) {
+            totalHolidays++;
+            days.push({
+                date, dayOfWeek, isHoliday: true, isAbsent: false, isLeave: false,
+                scan1: null, scan2: null, scan3: null, scan4: null,
+                breakRound: null,
+                late1Minutes: 0, late1Baht: 0, late2Minutes: 0, late2Baht: 0,
+                note: '', specialNote: '',
+            });
+            continue;
+        }
+
+        // Find earliest scan to detect shift
+        const sortedScans = [...dayScans].sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
+        const firstScanTime = sortedScans[0] ? sortedScans[0].time.substring(0, 5) : null;
+
+        // Get per-day WDD config based on position + shift + day type
+        const dayConfig = getWddDayConfig(employee.name, date, firstScanTime) || baseConfig;
+        const shiftNum = detectWddShiftNum(firstScanTime);
+
+        const shifts = assignScansToShifts(dayScans, dayConfig);
+        const noScans = !shifts.scan1 && !shifts.scan2 && !shifts.scan3 && !shifts.scan4;
+
+        if (noScans) {
+            totalHolidays++;
+            days.push({
+                date, dayOfWeek, isHoliday: true, isAbsent: false, isLeave: false,
+                scan1: null, scan2: null, scan3: null, scan4: null,
+                breakRound: null,
+                late1Minutes: 0, late1Baht: 0, late2Minutes: 0, late2Baht: 0,
+                note: '', specialNote: '',
+            });
+            continue;
+        }
+
+        const isAbsent = !shifts.scan1 && !shifts.scan4;
+        if (isAbsent) totalAbsent++;
+        else totalWorkingDays++;
+
+        // Late 1: เข้างานสาย
+        const late1 = calculateLateness(shifts.scan1, dayConfig.shift1Deadline, deductRate);
+        totalLate1 += late1.baht;
+
+        // Late 2: กลับจากพักสาย (ใช้ breakInDeadline จาก config โดยตรง)
+        let late2 = { minutes: 0, baht: 0 };
+        if (shifts.breakDeadline) {
+            late2 = calculateLateness(shifts.scan3, shifts.breakDeadline, deductRate);
+        }
+        totalLate2 += late2.baht;
+
+        // Build breakRound label: show fixed break times
+        let breakRoundLabel = null;
+        if (shifts.scan2 && dayConfig.breakInDeadline) {
+            breakRoundLabel = `กะ${shiftNum} (DL ${dayConfig.breakInDeadline})`;
+        } else if (shifts.breakRound) {
+            breakRoundLabel = shifts.breakRound + ' (DL ' + shifts.breakDeadline + ')';
+        }
+
+        days.push({
+            date, dayOfWeek, isHoliday: false, isAbsent, isLeave: false,
+            scan1: shifts.scan1, scan2: shifts.scan2, scan3: shifts.scan3, scan4: shifts.scan4,
+            breakRound: breakRoundLabel,
+            late1Minutes: late1.minutes, late1Baht: late1.baht,
+            late2Minutes: late2.minutes, late2Baht: late2.baht,
+            note: '', specialNote: '',
+        });
+    }
+
+    return {
+        id: generateId(),
+        employeeId: employee.id,
+        empCode: employee.empCode,
+        empName: employee.name,
+        shopId: employee.shopId,
+        shopName,
+        month, year,
+        totalDays: getDaysInMonth(year, month),
+        holidays: totalHolidays,
+        absent: totalAbsent,
+        leave: totalLeave,
+        quarantine: 0,
+        workingDays: totalWorkingDays,
+        totalLate1Baht: totalLate1,
+        totalLate2Baht: totalLate2,
+        totalDeduction: totalLate1 + totalLate2,
+        days,
+        shiftConfig: baseConfig,
     };
 }
