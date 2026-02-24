@@ -62,7 +62,7 @@ const WDD_SHIFT_CONFIGS = {
     },
     // ตำแหน่ง เสิร์ฟ - กะ 2 - วันเสาร์-อาทิตย์/วันนักขัตฤกษ์
     'เสิร์ฟ_2_weekend': {
-        shift1Start: "06:00", shift1End: "11:30", shift1Deadline: "10:00",
+        shift1Start: "06:00", shift1End: "11:30", shift1Deadline: "12:00",
         shift2Start: "13:00", shift2End: "16:00",
         shift3Start: "14:00", shift3End: "18:00",
         shift4Start: "20:00", shift4End: "03:00",
@@ -82,7 +82,7 @@ const WDD_SHIFT_CONFIGS = {
     },
     // ตำแหน่ง เดิน - กะ 2 (ทุกวัน)
     'เดิน_2': {
-        shift1Start: "06:00", shift1End: "11:30", shift1Deadline: "10:00",
+        shift1Start: "06:00", shift1End: "11:30", shift1Deadline: "12:00",
         shift2Start: "13:00", shift2End: "16:00",
         shift3Start: "14:00", shift3End: "18:00",
         shift4Start: "20:00", shift4End: "03:00",
@@ -102,7 +102,7 @@ const WDD_SHIFT_CONFIGS = {
     },
     // ตำแหน่ง ครัว - กะ 2 (ทุกวัน)
     'ครัว_2': {
-        shift1Start: "06:00", shift1End: "11:30", shift1Deadline: "10:00",
+        shift1Start: "06:00", shift1End: "11:30", shift1Deadline: "12:00",
         shift2Start: "13:30", shift2End: "16:30",
         shift3Start: "15:00", shift3End: "18:30",
         shift4Start: "20:00", shift4End: "03:00",
