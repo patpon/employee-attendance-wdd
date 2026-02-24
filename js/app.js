@@ -1142,7 +1142,7 @@ function renderSettings(container) {
                 <h1 class="text-2xl font-bold text-gray-800">ตั้งค่า</h1>
                 <p class="text-gray-500 text-sm mt-1">ตั้งค่าทั่วไปของระบบ</p>
             </div>
-            <div class="card">
+            <div class="card mb-6">
                 <h3 class="text-sm font-semibold text-gray-700 mb-4">ข้อมูลร้านค้า</h3>
                 <div style="margin-bottom:16px;">
                     <label class="text-sm text-gray-600" style="display:block;margin-bottom:4px;">ชื่อร้านค้า</label>
@@ -1153,8 +1153,94 @@ function renderSettings(container) {
                     <button class="btn-success" onclick="saveSettings()">&#10004; บันทึกการตั้งค่า</button>
                 </div>
             </div>
+            <div class="card">
+                <h3 class="text-sm font-semibold text-gray-700 mb-1">วันหยุดนักขัตฤกษ์</h3>
+                <p class="text-xs text-gray-400 mb-4">วันที่กำหนดจะใช้กฎ เสาร์-อาทิตย์ ในการคำนวณเวลาพนักงาน WDD (เสิร์ฟ)</p>
+                <div style="display:flex;gap:8px;margin-bottom:12px;">
+                    <input type="date" id="phDateInput" class="input-field" style="flex:1;">
+                    <input type="text" id="phNameInput" class="input-field" style="flex:1;" placeholder="ชื่อวันหยุด (ไม่บังคับ)">
+                    <button class="btn-primary" onclick="addPublicHoliday()" style="white-space:nowrap;">+ เพิ่ม</button>
+                </div>
+                <div id="phList"></div>
+            </div>
         </div>
     `;
+    renderPublicHolidayList();
+}
+
+function getPublicHolidays() {
+    try {
+        const stored = localStorage.getItem('publicHolidays');
+        return stored ? JSON.parse(stored) : [];
+    } catch (e) { return []; }
+}
+
+function getPublicHolidayNames() {
+    try {
+        const stored = localStorage.getItem('publicHolidayNames');
+        return stored ? JSON.parse(stored) : {};
+    } catch (e) { return {}; }
+}
+
+function savePublicHolidays(list, names) {
+    localStorage.setItem('publicHolidays', JSON.stringify(list));
+    localStorage.setItem('publicHolidayNames', JSON.stringify(names));
+}
+
+function renderPublicHolidayList() {
+    const el = document.getElementById('phList');
+    if (!el) return;
+    const holidays = getPublicHolidays().sort();
+    const names = getPublicHolidayNames();
+    if (holidays.length === 0) {
+        el.innerHTML = '<p class="text-sm text-gray-400 text-center py-4">ยังไม่มีวันหยุดนักขัตฤกษ์</p>';
+        return;
+    }
+    el.innerHTML = `<div style="max-height:300px;overflow-y:auto;">
+        <table style="width:100%;font-size:13px;border-collapse:collapse;">
+            <thead><tr style="background:#f9fafb;">
+                <th style="padding:6px 10px;text-align:left;border-bottom:1px solid #e5e7eb;">วันที่</th>
+                <th style="padding:6px 10px;text-align:left;border-bottom:1px solid #e5e7eb;">วัน</th>
+                <th style="padding:6px 10px;text-align:left;border-bottom:1px solid #e5e7eb;">ชื่อวันหยุด</th>
+                <th style="padding:6px 10px;text-align:center;border-bottom:1px solid #e5e7eb;">ลบ</th>
+            </tr></thead>
+            <tbody>${holidays.map(d => {
+                const dayName = getThaiDayName(d);
+                const name = names[d] || '';
+                return `<tr style="border-bottom:1px solid #f3f4f6;">
+                    <td style="padding:6px 10px;font-family:monospace;">${formatDate(d)}</td>
+                    <td style="padding:6px 10px;">${dayName}</td>
+                    <td style="padding:6px 10px;color:#6b7280;">${escHtml(name)}</td>
+                    <td style="padding:6px 10px;text-align:center;">
+                        <button onclick="removePublicHoliday('${d}')" style="color:#ef4444;background:none;border:none;cursor:pointer;font-size:16px;" title="ลบ">&#128465;</button>
+                    </td>
+                </tr>`;
+            }).join('')}</tbody>
+        </table>
+    </div>`;
+}
+
+function addPublicHoliday() {
+    const dateInput = document.getElementById('phDateInput');
+    const nameInput = document.getElementById('phNameInput');
+    const d = dateInput.value;
+    if (!d) { alert('กรุณาเลือกวันที่'); return; }
+    const holidays = getPublicHolidays();
+    const names = getPublicHolidayNames();
+    if (!holidays.includes(d)) holidays.push(d);
+    if (nameInput.value.trim()) names[d] = nameInput.value.trim();
+    savePublicHolidays(holidays, names);
+    dateInput.value = '';
+    nameInput.value = '';
+    renderPublicHolidayList();
+}
+
+function removePublicHoliday(d) {
+    const holidays = getPublicHolidays().filter(h => h !== d);
+    const names = getPublicHolidayNames();
+    delete names[d];
+    savePublicHolidays(holidays, names);
+    renderPublicHolidayList();
 }
 
 async function saveSettings() {

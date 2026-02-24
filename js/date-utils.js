@@ -130,11 +130,20 @@ function detectWddShiftNum(firstScanTime) {
     return min < timeToMinutes('11:00') ? 1 : 2;
 }
 
-// Check if date is weekend (Saturday=6, Sunday=0)
+// Check if date is weekend (Saturday=6, Sunday=0) or public holiday
 function isWeekend(isoDate) {
     const d = new Date(isoDate);
     const dow = d.getDay();
-    return dow === 0 || dow === 6;
+    if (dow === 0 || dow === 6) return true;
+    // Check public holidays stored in localStorage
+    try {
+        const stored = localStorage.getItem('publicHolidays');
+        if (stored) {
+            const holidays = JSON.parse(stored);
+            if (Array.isArray(holidays) && holidays.includes(isoDate)) return true;
+        }
+    } catch (e) {}
+    return false;
 }
 
 // Get WDD shift config for a specific employee and date, given first scan time
