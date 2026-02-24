@@ -734,9 +734,9 @@ function updateScanTime(rIdx, dayIdx, scanNum, value) {
             const dh = Math.floor(deadlineMin / 60);
             const dm = deadlineMin % 60;
             breakDL = dh.toString().padStart(2, '0') + ':' + dm.toString().padStart(2, '0');
-            // For WDD, show shift number; for legacy, show breakOutFixed
-            const label = wddConfig ? `กะ${detectWddShiftNum(firstForConfig)}` : config.breakOutFixed;
-            day.breakRound = `${label} (DL ${breakDL})`;
+            // For WDD, show shift number; for legacy, show (DL ...)
+            const label = wddConfig ? `กะ${detectWddShiftNum(firstForConfig)} ` : '';
+            day.breakRound = `${label}(DL ${breakDL})`;
         }
     } else {
         day.breakRound = null;

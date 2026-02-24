@@ -221,7 +221,7 @@ function processEmployeeAttendance(employee, scans, shopName, month, year) {
         days.push({
             date, dayOfWeek, isHoliday: false, isAbsent, isLeave: false,
             scan1: shifts.scan1, scan2: shifts.scan2, scan3: shifts.scan3, scan4: shifts.scan4,
-            breakRound: shifts.breakRound ? (shifts.breakRound + ' (DL ' + shifts.breakDeadline + ')') : null,
+            breakRound: shifts.breakDeadline ? ('(DL ' + shifts.breakDeadline + ')') : null,
             late1Minutes: late1.minutes, late1Baht: late1.baht,
             late2Minutes: late2.minutes, late2Baht: late2.baht,
             note: '', specialNote: '',
