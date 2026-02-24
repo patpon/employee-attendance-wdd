@@ -18,10 +18,9 @@ const DEFAULT_SHIFT_CONFIG = {
     shift3End: "17:00",
     shift4Start: "20:00",
     shift4End: "03:00",
-    breakRoundA_outBefore: "14:00",
-    breakRoundA_deadline: "14:30",
-    breakRoundB_outBefore: "16:00",
-    breakRoundB_deadline: "16:30",
+    hasBreak: true,
+    breakOutFixed: "13:30",
+    breakInDeadline: "15:00",
     deductionPerMinute: 1,
 };
 

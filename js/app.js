@@ -722,34 +722,21 @@ function updateScanTime(rIdx, dayIdx, scanNum, value) {
     // Recalculate break deadline
     let breakDL = null;
     if (day.scan2) {
-        if (config.breakInDeadline) {
-            // WDD: if scan2 is later than breakOutFixed, shift the deadline by the same amount
-            const fixedOutMin = config.breakOutFixed ? timeToMinutes(config.breakOutFixed) : null;
+        // Unified logic: if config has breakOutFixed and breakInDeadline, shift deadline when scan2 is late
+        if (config.breakOutFixed && config.breakInDeadline) {
+            const fixedOutMin = timeToMinutes(config.breakOutFixed);
             const actualOutMin = timeToMinutes(day.scan2);
             const baseDeadlineMin = timeToMinutes(config.breakInDeadline);
             let deadlineMin = baseDeadlineMin;
-            if (fixedOutMin !== null && actualOutMin > fixedOutMin) {
+            if (actualOutMin > fixedOutMin) {
                 deadlineMin = baseDeadlineMin + (actualOutMin - fixedOutMin);
             }
             const dh = Math.floor(deadlineMin / 60);
             const dm = deadlineMin % 60;
             breakDL = dh.toString().padStart(2, '0') + ':' + dm.toString().padStart(2, '0');
-            const shiftNum = detectWddShiftNum(firstForConfig);
-            day.breakRound = `กะ${shiftNum} (DL ${breakDL})`;
-        } else {
-            // Legacy: round A/B/C/D
-            const outMin = timeToMinutes(day.scan2);
-            const calcDeadline = outMin + (config.breakDurationMinutes || 90);
-            let round, fixedDL;
-            if (outMin < timeToMinutes('13:15')) { round = 'A'; fixedDL = timeToMinutes('14:30'); }
-            else if (outMin < timeToMinutes('14:00')) { round = 'B'; fixedDL = timeToMinutes('15:00'); }
-            else if (outMin < timeToMinutes('14:45')) { round = 'C'; fixedDL = timeToMinutes('16:00'); }
-            else { round = 'D'; fixedDL = timeToMinutes('16:30'); }
-            const deadlineMin = Math.max(calcDeadline, fixedDL);
-            const h = Math.floor(deadlineMin / 60);
-            const m = deadlineMin % 60;
-            breakDL = h.toString().padStart(2, '0') + ':' + m.toString().padStart(2, '0');
-            day.breakRound = round + ' (DL ' + breakDL + ')';
+            // For WDD, show shift number; for legacy, show breakOutFixed
+            const label = wddConfig ? `กะ${detectWddShiftNum(firstForConfig)}` : config.breakOutFixed;
+            day.breakRound = `${label} (DL ${breakDL})`;
         }
     } else {
         day.breakRound = null;

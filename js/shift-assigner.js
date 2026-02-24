@@ -117,32 +117,19 @@ function assignScansToShifts(scans, config) {
     let breakDeadline = null;
     let breakRound = null;
     if (r2.scan) {
-        if (config.breakInDeadline) {
-            // WDD: if scan2 is later than breakOutFixed, shift the deadline by the same amount
-            const fixedOutMin = config.breakOutFixed ? timeToMinutes(config.breakOutFixed) : null;
+        // Unified logic: if config has breakOutFixed and breakInDeadline, shift deadline when scan2 is late
+        if (config.breakOutFixed && config.breakInDeadline) {
+            const fixedOutMin = timeToMinutes(config.breakOutFixed);
             const actualOutMin = timeToMinutes(r2.scan.time);
             const baseDeadlineMin = timeToMinutes(config.breakInDeadline);
             let deadlineMin = baseDeadlineMin;
-            if (fixedOutMin !== null && actualOutMin > fixedOutMin) {
+            if (actualOutMin > fixedOutMin) {
                 deadlineMin = baseDeadlineMin + (actualOutMin - fixedOutMin);
             }
             const dh = Math.floor(deadlineMin / 60);
             const dm = deadlineMin % 60;
             breakDeadline = `${dh.toString().padStart(2, '0')}:${dm.toString().padStart(2, '0')}`;
             breakRound = config.breakOutFixed || null;
-        } else {
-            // Legacy: round A/B/C/D based on break-out time
-            const outMin = timeToMinutes(r2.scan.time);
-            const calcDeadline = outMin + (config.breakDurationMinutes || 90);
-            let fixedDL;
-            if (outMin < timeToMinutes('13:15')) { breakRound = 'A'; fixedDL = timeToMinutes('14:30'); }
-            else if (outMin < timeToMinutes('14:00')) { breakRound = 'B'; fixedDL = timeToMinutes('15:00'); }
-            else if (outMin < timeToMinutes('14:45')) { breakRound = 'C'; fixedDL = timeToMinutes('16:00'); }
-            else { breakRound = 'D'; fixedDL = timeToMinutes('16:30'); }
-            const deadlineMin = Math.max(calcDeadline, fixedDL);
-            const h = Math.floor(deadlineMin / 60);
-            const m = deadlineMin % 60;
-            breakDeadline = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
         }
     }
 
