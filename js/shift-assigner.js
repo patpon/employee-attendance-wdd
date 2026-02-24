@@ -334,7 +334,31 @@ function processEmployeeAttendanceWDD(employee, scans, shopName, month, year) {
         const nonMidnightScans = dayScans.filter(s => timeToMinutes(s.time) >= 180); // >= 03:00
         const candidateScans = nonMidnightScans.length > 0 ? nonMidnightScans : dayScans;
         const sortedScans = [...candidateScans].sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
-        const firstScanTime = sortedScans[0] ? sortedScans[0].time.substring(0, 5) : null;
+        let firstScanTime = sortedScans[0] ? sortedScans[0].time.substring(0, 5) : null;
+
+        // Smart shift detection: ถ้า firstScan >= 11:00 (ตาม threshold จะเป็นกะ 2)
+        // ลองตรวจว่า scan นั้นตกใน shift2 window ของกะ 1 หรือไม่
+        // ถ้าใช่ แสดงว่าพนักงานลืม scan เข้า → ควรเป็นกะ 1
+        if (firstScanTime && timeToMinutes(firstScanTime) >= timeToMinutes('11:00')) {
+            const position = detectWddPosition(employee.name);
+            const weekend = isWeekend(date);
+            let shift1Key;
+            if (position === 'เดิน' || position === 'ครัว') {
+                shift1Key = `${position}_1`;
+            } else if (position === 'เสิร์ฟ') {
+                shift1Key = `เสิร์ฟ_1_${weekend ? 'weekend' : 'weekday'}`;
+            }
+            const shift1Config = shift1Key ? WDD_SHIFT_CONFIGS[shift1Key] : null;
+            if (shift1Config && shift1Config.shift2Start && shift1Config.shift2End) {
+                const scanMin = timeToMinutes(firstScanTime);
+                const s2Start = timeToMinutes(shift1Config.shift2Start);
+                const s2End = timeToMinutes(shift1Config.shift2End);
+                if (scanMin >= s2Start && scanMin <= s2End) {
+                    // scan ตกใน shift2 window ของกะ 1 → ใช้กะ 1
+                    firstScanTime = null; // null = default กะ 1
+                }
+            }
+        }
 
         // Get per-day WDD config based on position + shift + day type
         const dayConfig = getWddDayConfig(employee.name, date, firstScanTime) || baseConfig;
