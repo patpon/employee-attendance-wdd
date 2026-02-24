@@ -339,18 +339,36 @@ function processEmployeeAttendanceWDD(employee, scans, shopName, month, year) {
         // Smart shift detection: ถ้า firstScan >= 11:00 (ตาม threshold จะเป็นกะ 2)
         // ลองตรวจว่า scan นั้นตกใน shift2 window ของกะ 1 หรือไม่
         // ถ้าใช่ แสดงว่าพนักงานลืม scan เข้า → ควรเป็นกะ 1
+        // ยกเว้น: ถ้ากะ 2 ไม่มีพัก และ scan ตกใน shift1 window ของกะ 2 → ใช้กะ 2
         if (firstScanTime && timeToMinutes(firstScanTime) >= timeToMinutes('11:00')) {
             const position = detectWddPosition(employee.name);
             const weekend = isWeekend(date);
-            let shift1Key;
+            // ดึง config ทั้งกะ 1 และกะ 2
+            let shift1Key, shift2Key;
             if (position === 'เดิน' || position === 'ครัว') {
                 shift1Key = `${position}_1`;
+                shift2Key = `${position}_2`;
             } else if (position === 'เสิร์ฟ') {
-                shift1Key = `เสิร์ฟ_1_${weekend ? 'weekend' : 'weekday'}`;
+                const dayType = weekend ? 'weekend' : 'weekday';
+                shift1Key = `เสิร์ฟ_1_${dayType}`;
+                shift2Key = `เสิร์ฟ_2_${dayType}`;
             }
             const shift1Config = shift1Key ? WDD_SHIFT_CONFIGS[shift1Key] : null;
-            if (shift1Config && shift1Config.shift2Start && shift1Config.shift2End) {
-                const scanMin = timeToMinutes(firstScanTime);
+            const shift2Config = shift2Key ? WDD_SHIFT_CONFIGS[shift2Key] : null;
+            const scanMin = timeToMinutes(firstScanTime);
+
+            // ตรวจว่า scan ตกใน shift1 window ของกะ 2 และกะ 2 ไม่มีพัก
+            let isShift2NoBreak = false;
+            if (shift2Config && shift2Config.hasBreak === false) {
+                const s1Start2 = timeToMinutes(shift2Config.shift1Start);
+                const s1End2 = timeToMinutes(shift2Config.shift1End);
+                if (scanMin >= s1Start2 && scanMin <= s1End2) {
+                    isShift2NoBreak = true; // scan เป็น scan เข้างานของกะ 2 ที่ไม่มีพัก
+                }
+            }
+
+            // ถ้าไม่ใช่กะ 2 ที่ไม่มีพัก → ตรวจว่าตกใน shift2 window ของกะ 1 หรือไม่
+            if (!isShift2NoBreak && shift1Config && shift1Config.shift2Start && shift1Config.shift2End) {
                 const s2Start = timeToMinutes(shift1Config.shift2Start);
                 const s2End = timeToMinutes(shift1Config.shift2End);
                 if (scanMin >= s2Start && scanMin <= s2End) {
