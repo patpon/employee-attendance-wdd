@@ -713,7 +713,10 @@ function updateScanTime(rIdx, dayIdx, scanNum, value) {
     day['scan' + scanNum] = value || null;
 
     // Resolve per-day config: WDD position-based or legacy
-    const wddConfig = getWddDayConfig(record.empName, day.date, day.scan1 || value || null);
+    // Use scan1 as firstScanTime only if it's not a cross-midnight scan (00:00-02:59)
+    const rawFirst = day.scan1;
+    const firstForConfig = (rawFirst && timeToMinutes(rawFirst) >= 180) ? rawFirst : null;
+    const wddConfig = getWddDayConfig(record.empName, day.date, firstForConfig);
     const config = wddConfig || baseConfig;
 
     // Recalculate break deadline

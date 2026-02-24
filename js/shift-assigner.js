@@ -307,8 +307,11 @@ function processEmployeeAttendanceWDD(employee, scans, shopName, month, year) {
             continue;
         }
 
-        // Find earliest scan to detect shift
-        const sortedScans = [...dayScans].sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
+        // Find earliest scan to detect shift — exclude cross-midnight scans (00:00-02:59)
+        // because those belong to the previous day's shift end, not the current day's start
+        const nonMidnightScans = dayScans.filter(s => timeToMinutes(s.time) >= 180); // >= 03:00
+        const candidateScans = nonMidnightScans.length > 0 ? nonMidnightScans : dayScans;
+        const sortedScans = [...candidateScans].sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
         const firstScanTime = sortedScans[0] ? sortedScans[0].time.substring(0, 5) : null;
 
         // Get per-day WDD config based on position + shift + day type
