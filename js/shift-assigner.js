@@ -86,18 +86,28 @@ function assignScansToShifts(scans, config) {
     // และ skip ถ้ามี scan อยู่ใน shift2 window แล้ว เพื่อไม่ให้ scan พักออกมาเป็น scan1
     if (!r1.scan && config.shift2Start) {
         const prospective = findFirstScan(scans, '03:00', config.shift2Start, usedIndices);
-        // ใช้ fallback เฉพาะเมื่อ scan นั้นไม่อยู่ใน shift2 window
-        const prospMin = prospective.scan ? timeToMinutes(prospective.scan.time) : -1;
-        const s2StartMin = timeToMinutes(config.shift2Start);
-        if (prospective.scan && prospMin < s2StartMin) {
-            r1 = prospective;
+        if (prospective.scan) {
+            const prospMin = timeToMinutes(prospective.scan.time);
+            const s1EndMin = timeToMinutes(config.shift1End);
+            const s2StartMin = timeToMinutes(config.shift2Start);
+            // ใช้ fallback เฉพาะเมื่อ scan อยู่ใกล้ shift1End มากกว่า shift2Start
+            // ถ้าใกล้ shift2Start มากกว่า แสดงว่าพนักงานลืม scan เข้า → ปล่อยให้ scan2 จับแทน
+            const distToShift1 = Math.abs(prospMin - s1EndMin);
+            const distToShift2 = Math.abs(s2StartMin - prospMin);
+            if (distToShift1 <= distToShift2) {
+                r1 = prospective;
+            }
         }
     }
     if (r1.index >= 0) usedIndices.add(r1.index);
 
     // Scan 2: ออกพัก - earliest scan in break-out window (ถ้ามีพัก)
-    let r2 = (config.hasBreak !== false && config.shift2Start)
-        ? findFirstScan(scans, config.shift2Start, config.shift2End, usedIndices)
+    // ถ้าไม่มี scan1 → ขยาย scan2 window เริ่มจาก shift1End เพื่อจับ scan ที่อยู่ก่อน shift2Start
+    // (กรณีพนักงานลืม scan เข้า → scan แรกหลัง shift1End ควรเป็นพักออก)
+    const scan2WindowStart = (!r1.scan && config.hasBreak !== false && config.shift1End)
+        ? config.shift1End : config.shift2Start;
+    let r2 = (config.hasBreak !== false && scan2WindowStart)
+        ? findFirstScan(scans, scan2WindowStart, config.shift2End, usedIndices)
         : { scan: null, index: -1 };
     if (r2.index >= 0) usedIndices.add(r2.index);
 
