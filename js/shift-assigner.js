@@ -82,9 +82,17 @@ function assignScansToShifts(scans, config) {
     // Scan 1: เข้างาน - earliest scan in window
     let r1 = findFirstScan(scans, config.shift1Start, config.shift1End, usedIndices);
     // Fallback: ถ้าหาใน window ไม่เจอ ให้ใช้ scan แรกสุดก่อนเวลาออกพัก
-    // แต่ถ้ามี scan2 ใน window แล้ว ให้ skip fallback เพื่อไม่ให้ scan2 มาเป็น scan1
-    const hasScan2 = config.shift2Start ? findFirstScan(scans, config.shift2Start, config.shift2End, usedIndices).scan : null;
-    if (!r1.scan && !hasScan2 && config.shift2Start) r1 = findFirstScan(scans, '03:00', config.shift2Start, usedIndices);
+    // skip fallback ถ้า shift2Start เป็น null (เช่น เสิร์ฟ กะ 2 จ-ศ ไม่มีพัก)
+    // และ skip ถ้ามี scan อยู่ใน shift2 window แล้ว เพื่อไม่ให้ scan พักออกมาเป็น scan1
+    if (!r1.scan && config.shift2Start) {
+        const prospective = findFirstScan(scans, '03:00', config.shift2Start, usedIndices);
+        // ใช้ fallback เฉพาะเมื่อ scan นั้นไม่อยู่ใน shift2 window
+        const prospMin = prospective.scan ? timeToMinutes(prospective.scan.time) : -1;
+        const s2StartMin = timeToMinutes(config.shift2Start);
+        if (prospective.scan && prospMin < s2StartMin) {
+            r1 = prospective;
+        }
+    }
     if (r1.index >= 0) usedIndices.add(r1.index);
 
     // Scan 2: ออกพัก - earliest scan in break-out window (ถ้ามีพัก)
