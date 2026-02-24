@@ -723,9 +723,18 @@ function updateScanTime(rIdx, dayIdx, scanNum, value) {
     let breakDL = null;
     if (day.scan2) {
         if (config.breakInDeadline) {
-            // WDD: fixed break-in deadline from config
-            breakDL = config.breakInDeadline;
-            const shiftNum = detectWddShiftNum(day.scan1);
+            // WDD: if scan2 is later than breakOutFixed, shift the deadline by the same amount
+            const fixedOutMin = config.breakOutFixed ? timeToMinutes(config.breakOutFixed) : null;
+            const actualOutMin = timeToMinutes(day.scan2);
+            const baseDeadlineMin = timeToMinutes(config.breakInDeadline);
+            let deadlineMin = baseDeadlineMin;
+            if (fixedOutMin !== null && actualOutMin > fixedOutMin) {
+                deadlineMin = baseDeadlineMin + (actualOutMin - fixedOutMin);
+            }
+            const dh = Math.floor(deadlineMin / 60);
+            const dm = deadlineMin % 60;
+            breakDL = dh.toString().padStart(2, '0') + ':' + dm.toString().padStart(2, '0');
+            const shiftNum = detectWddShiftNum(firstForConfig);
             day.breakRound = `กะ${shiftNum} (DL ${breakDL})`;
         } else {
             // Legacy: round A/B/C/D

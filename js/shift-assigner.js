@@ -118,8 +118,17 @@ function assignScansToShifts(scans, config) {
     let breakRound = null;
     if (r2.scan) {
         if (config.breakInDeadline) {
-            // WDD: fixed deadline from config
-            breakDeadline = config.breakInDeadline;
+            // WDD: if scan2 is later than breakOutFixed, shift the deadline by the same amount
+            const fixedOutMin = config.breakOutFixed ? timeToMinutes(config.breakOutFixed) : null;
+            const actualOutMin = timeToMinutes(r2.scan.time);
+            const baseDeadlineMin = timeToMinutes(config.breakInDeadline);
+            let deadlineMin = baseDeadlineMin;
+            if (fixedOutMin !== null && actualOutMin > fixedOutMin) {
+                deadlineMin = baseDeadlineMin + (actualOutMin - fixedOutMin);
+            }
+            const dh = Math.floor(deadlineMin / 60);
+            const dm = deadlineMin % 60;
+            breakDeadline = `${dh.toString().padStart(2, '0')}:${dm.toString().padStart(2, '0')}`;
             breakRound = config.breakOutFixed || null;
         } else {
             // Legacy: round A/B/C/D based on break-out time
