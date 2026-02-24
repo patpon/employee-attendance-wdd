@@ -96,16 +96,22 @@ function assignScansToShifts(scans, config) {
     if (r1.index >= 0) usedIndices.add(r1.index);
 
     // Scan 2: ออกพัก - earliest scan in break-out window (ถ้ามีพัก)
-    const r2 = (config.hasBreak !== false && config.shift2Start)
+    let r2 = (config.hasBreak !== false && config.shift2Start)
         ? findFirstScan(scans, config.shift2Start, config.shift2End, usedIndices)
         : { scan: null, index: -1 };
     if (r2.index >= 0) usedIndices.add(r2.index);
 
     // Scan 3: กลับจากพัก - earliest scan in break-in window (ถ้ามีพัก)
-    const r3 = (config.hasBreak !== false && config.shift3Start)
+    let r3 = (config.hasBreak !== false && config.shift3Start)
         ? findFirstScan(scans, config.shift3Start, config.shift3End, usedIndices)
         : { scan: null, index: -1 };
     if (r3.index >= 0) usedIndices.add(r3.index);
+
+    // ถ้าไม่มี scan2 (พักออก) แต่มี scan3 → ย้าย scan3 ไปเป็น scan2
+    if (!r2.scan && r3.scan) {
+        r2 = r3;
+        r3 = { scan: null, index: -1 };
+    }
 
     // Scan 4: เลิกงาน - latest scan in window (cross-midnight supported)
     let r4 = findLastScan(scans, config.shift4Start, config.shift4End, usedIndices);
