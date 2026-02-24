@@ -346,10 +346,10 @@ function processEmployeeAttendanceWDD(employee, scans, shopName, month, year) {
         }
         totalLate2 += late2.baht;
 
-        // Build breakRound label: show fixed break times
+        // Build breakRound label: show actual computed deadline (may differ from config if scan2 was late)
         let breakRoundLabel = null;
-        if (shifts.scan2 && dayConfig.breakInDeadline) {
-            breakRoundLabel = `กะ${shiftNum} (DL ${dayConfig.breakInDeadline})`;
+        if (shifts.scan2 && shifts.breakDeadline) {
+            breakRoundLabel = `กะ${shiftNum} (DL ${shifts.breakDeadline})`;
         } else if (shifts.breakRound) {
             breakRoundLabel = shifts.breakRound + ' (DL ' + shifts.breakDeadline + ')';
         }
