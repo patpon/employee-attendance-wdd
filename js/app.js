@@ -79,10 +79,11 @@ function applyRoleToSidebar() {
         window.location.href = 'login.html';
         return;
     }
-    // Load shop name from DB
+    // Load shop name and public holidays from DB
     try {
         const shop = await api.getShop(DEFAULT_SHOP_ID);
         if (shop && shop.name) DEFAULT_SHOP_NAME = shop.name;
+        if (shop && Array.isArray(shop.publicHolidays)) PUBLIC_HOLIDAYS = shop.publicHolidays;
     } catch {}
     applyRoleToSidebar();
     navigateTo('dashboard');
@@ -1168,30 +1169,13 @@ function renderSettings(container) {
     renderPublicHolidayList();
 }
 
-function getPublicHolidays() {
-    try {
-        const stored = localStorage.getItem('publicHolidays');
-        return stored ? JSON.parse(stored) : [];
-    } catch (e) { return []; }
-}
-
-function getPublicHolidayNames() {
-    try {
-        const stored = localStorage.getItem('publicHolidayNames');
-        return stored ? JSON.parse(stored) : {};
-    } catch (e) { return {}; }
-}
-
-function savePublicHolidays(list, names) {
-    localStorage.setItem('publicHolidays', JSON.stringify(list));
-    localStorage.setItem('publicHolidayNames', JSON.stringify(names));
-}
+// PUBLIC_HOLIDAYS_NAMES: stored in memory only (names are display-only, dates are in DB)
+let PUBLIC_HOLIDAYS_NAMES = {};
 
 function renderPublicHolidayList() {
     const el = document.getElementById('phList');
     if (!el) return;
-    const holidays = getPublicHolidays().sort();
-    const names = getPublicHolidayNames();
+    const holidays = [...PUBLIC_HOLIDAYS].sort();
     if (holidays.length === 0) {
         el.innerHTML = '<p class="text-sm text-gray-400 text-center py-4">ยังไม่มีวันหยุดนักขัตฤกษ์</p>';
         return;
@@ -1206,7 +1190,7 @@ function renderPublicHolidayList() {
             </tr></thead>
             <tbody>${holidays.map(d => {
                 const dayName = getThaiDayName(d);
-                const name = names[d] || '';
+                const name = PUBLIC_HOLIDAYS_NAMES[d] || '';
                 return `<tr style="border-bottom:1px solid #f3f4f6;">
                     <td style="padding:6px 10px;font-family:monospace;">${formatDate(d)}</td>
                     <td style="padding:6px 10px;">${dayName}</td>
@@ -1220,26 +1204,31 @@ function renderPublicHolidayList() {
     </div>`;
 }
 
-function addPublicHoliday() {
+async function savePublicHolidaysToDB() {
+    try {
+        await api.updateShop(DEFAULT_SHOP_ID, { name: DEFAULT_SHOP_NAME, publicHolidays: PUBLIC_HOLIDAYS });
+    } catch (err) {
+        alert('เกิดข้อผิดพลาดบันทึกวันหยุด: ' + err.message);
+    }
+}
+
+async function addPublicHoliday() {
     const dateInput = document.getElementById('phDateInput');
     const nameInput = document.getElementById('phNameInput');
     const d = dateInput.value;
     if (!d) { alert('กรุณาเลือกวันที่'); return; }
-    const holidays = getPublicHolidays();
-    const names = getPublicHolidayNames();
-    if (!holidays.includes(d)) holidays.push(d);
-    if (nameInput.value.trim()) names[d] = nameInput.value.trim();
-    savePublicHolidays(holidays, names);
+    if (!PUBLIC_HOLIDAYS.includes(d)) PUBLIC_HOLIDAYS.push(d);
+    if (nameInput.value.trim()) PUBLIC_HOLIDAYS_NAMES[d] = nameInput.value.trim();
+    await savePublicHolidaysToDB();
     dateInput.value = '';
     nameInput.value = '';
     renderPublicHolidayList();
 }
 
-function removePublicHoliday(d) {
-    const holidays = getPublicHolidays().filter(h => h !== d);
-    const names = getPublicHolidayNames();
-    delete names[d];
-    savePublicHolidays(holidays, names);
+async function removePublicHoliday(d) {
+    PUBLIC_HOLIDAYS = PUBLIC_HOLIDAYS.filter(h => h !== d);
+    delete PUBLIC_HOLIDAYS_NAMES[d];
+    await savePublicHolidaysToDB();
     renderPublicHolidayList();
 }
 
@@ -1250,7 +1239,7 @@ async function saveSettings() {
         return;
     }
     try {
-        await api.updateShop(DEFAULT_SHOP_ID, { name: shopName });
+        await api.updateShop(DEFAULT_SHOP_ID, { name: shopName, publicHolidays: PUBLIC_HOLIDAYS });
         DEFAULT_SHOP_NAME = shopName;
         alert('บันทึกการตั้งค่าสำเร็จ!');
     } catch (err) {

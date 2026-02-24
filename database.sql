@@ -4,16 +4,20 @@
 -- =====================================================
 
 CREATE TABLE IF NOT EXISTS `shops` (
-  `id`        VARCHAR(30)  NOT NULL,
-  `name`      VARCHAR(255) NOT NULL,
-  `createdAt` DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-  `updatedAt` DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  `id`             VARCHAR(30)  NOT NULL,
+  `name`           VARCHAR(255) NOT NULL,
+  `publicHolidays` JSON         NULL,
+  `createdAt`      DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `updatedAt`      DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Insert default shop
-INSERT IGNORE INTO `shops` (`id`, `name`, `createdAt`, `updatedAt`)
-VALUES ('default', 'WDD', NOW(3), NOW(3));
+INSERT IGNORE INTO `shops` (`id`, `name`, `publicHolidays`, `createdAt`, `updatedAt`)
+VALUES ('default', 'WDD', '[]', NOW(3), NOW(3));
+
+-- Migrate: add publicHolidays column if not exists (for existing installations)
+ALTER TABLE `shops` ADD COLUMN IF NOT EXISTS `publicHolidays` JSON NULL;
 
 CREATE TABLE IF NOT EXISTS `employees` (
   `id`          VARCHAR(30)  NOT NULL,
