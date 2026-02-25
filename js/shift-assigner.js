@@ -177,13 +177,21 @@ function assignScansToShifts(scans, config, employeePattern = null) {
         }
     }
 
+    // Auto-fill scan3: ถ้ามี scan2 (พักออก) แต่ไม่มี scan3 (พักเข้า) และ config มี breakInDeadline
+    // → สมมติว่าพนักงานพักเข้าตรง DL (ไม่หัก) → ใส่ breakDeadline เป็น scan3 อัตโนมัติ
+    let autoScan3 = null;
+    if (r2.scan && !r3.scan && breakDeadline) {
+        autoScan3 = breakDeadline;
+    }
+
     return {
         scan1: r1.scan ? r1.scan.time.substring(0, 5) : null,
         scan2: r2.scan ? r2.scan.time.substring(0, 5) : null,
-        scan3: r3.scan ? r3.scan.time.substring(0, 5) : null,
+        scan3: r3.scan ? r3.scan.time.substring(0, 5) : autoScan3,
         scan4: r4.scan ? r4.scan.time.substring(0, 5) : null,
         breakRound,
         breakDeadline,
+        autoScan3: !!autoScan3, // flag ว่า scan3 เป็น auto-fill (ไม่ใช่ scan จริง)
     };
 }
 
@@ -263,6 +271,7 @@ function processEmployeeAttendance(employee, scans, shopName, month, year) {
         days.push({
             date, dayOfWeek, isHoliday: false, isAbsent, isLeave: false,
             scan1: shifts.scan1, scan2: shifts.scan2, scan3: shifts.scan3, scan4: shifts.scan4,
+            autoScan3: shifts.autoScan3 || false,
             breakRound: shifts.breakDeadline ? ('(DL ' + shifts.breakDeadline + ')') : null,
             late1Minutes: late1.minutes, late1Baht: late1.baht,
             late2Minutes: late2.minutes, late2Baht: late2.baht,
@@ -477,6 +486,7 @@ function processEmployeeAttendanceWDD(employee, scans, shopName, month, year) {
         days.push({
             date, dayOfWeek, isHoliday: false, isAbsent, isLeave: false,
             scan1: shifts.scan1, scan2: shifts.scan2, scan3: shifts.scan3, scan4: shifts.scan4,
+            autoScan3: shifts.autoScan3 || false,
             breakRound: breakRoundLabel,
             late1Minutes: late1.minutes, late1Baht: late1.baht,
             late2Minutes: late2.minutes, late2Baht: late2.baht,

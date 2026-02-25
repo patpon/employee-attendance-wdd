@@ -751,7 +751,9 @@ function renderAttDetail(record, rIdx) {
                             const s3empty = !day.isHoliday && !day.scan3;
                             const s4empty = !day.isHoliday && !day.scan4;
                             const anyEmpty = s1empty || s2empty || s3empty || s4empty;
-                            // ⚠ ลืม scan พักเข้า: มี scan2 แต่ไม่มี scan3 และ config มีพัก
+                            // Auto scan3: ระบบ auto-fill จาก breakInDeadline ตาม config ตำแหน่ง
+                            const isAutoScan3 = !day.isHoliday && day.autoScan3 && day.scan3;
+                            // ⚠ ลืม scan พักเข้า: มี scan2 แต่ไม่มี scan3 (กรณี auto-fill ไม่ทำงาน)
                             const forgotScan3 = !day.isHoliday && day.scan2 && !day.scan3 && day.breakRound;
                             return `
                             <tr class="${day.isHoliday ? 'holiday' : day.isAbsent ? 'absent' : ''}">
@@ -761,7 +763,7 @@ function renderAttDetail(record, rIdx) {
                                 <td><input type="checkbox" ${day.isHoliday ? 'checked' : ''} onchange="toggleHoliday(${rIdx},${idx})"></td>
                                 <td style="${!day.isHoliday && s1empty && anyEmpty ? emptyCellStyle : ''}">${day.isHoliday ? '-' : '<input type="time" class="time-input" value="'+(day.scan1||'')+'" onchange="updateScanTime('+rIdx+','+idx+',1,this.value)">'}</td>
                                 <td style="${!day.isHoliday && s2empty && anyEmpty ? emptyCellStyle : ''}">${day.isHoliday ? '-' : '<input type="time" class="time-input" value="'+(day.scan2||'')+'" onchange="updateScanTime('+rIdx+','+idx+',2,this.value)">'}</td>
-                                <td style="${forgotScan3 ? 'background:#fef2f2;' : (!day.isHoliday && s3empty && anyEmpty ? emptyCellStyle : '')}">${day.isHoliday ? '-' : '<input type="time" class="time-input" value="'+(day.scan3||'')+'" onchange="updateScanTime('+rIdx+','+idx+',3,this.value)">' + (forgotScan3 ? '<span title="น่าจะลืม scan พักเข้า" style="color:#ef4444;font-size:11px;margin-left:2px;">⚠ลืม?</span>' : '')}</td>
+                                <td style="${isAutoScan3 ? 'background:#ecfdf5;' : forgotScan3 ? 'background:#fef2f2;' : (!day.isHoliday && s3empty && anyEmpty ? emptyCellStyle : '')}">${day.isHoliday ? '-' : '<input type="time" class="time-input" value="'+(day.scan3||'')+'" onchange="updateScanTime('+rIdx+','+idx+',3,this.value)" style="'+(isAutoScan3 ? 'color:#059669;font-weight:600;' : '')+'">' + (isAutoScan3 ? '<span title="ระบบ auto-fill ตาม DL ตำแหน่ง (สมมติพักเข้าตรงเวลา)" style="color:#059669;font-size:9px;margin-left:1px;font-weight:600;">auto</span>' : forgotScan3 ? '<span title="น่าจะลืม scan พักเข้า" style="color:#ef4444;font-size:11px;margin-left:2px;">⚠ลืม?</span>' : '')}</td>
                                 <td style="${!day.isHoliday && s4empty && anyEmpty ? emptyCellStyle : ''}">${day.isHoliday ? '-' : '<input type="time" class="time-input" value="'+(day.scan4||'')+'" onchange="updateScanTime('+rIdx+','+idx+',4,this.value)">'}</td>
                                 <td style="${day.waiveLate1 ? 'text-decoration:line-through;color:#9ca3af;' : ''}">${day.late1Minutes > 0 ? minutesToTime(day.late1Minutes) : ''}</td>
                                 <td class="text-red-600" style="${day.waiveLate1 ? 'text-decoration:line-through;color:#9ca3af;' : ''}">${day.late1Baht > 0 ? day.late1Baht : 0}</td>
