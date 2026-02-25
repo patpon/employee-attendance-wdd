@@ -1187,8 +1187,8 @@ function buildReportHTML(record) {
         <tbody>${record.days.map((day, idx) => {
             return '<tr class="' + (day.isHoliday ? 'holiday' : day.isAbsent ? 'absent' : '') + '">' +
             '<td>' + (idx + 1) + '</td><td>' + formatDate(day.date) + '</td><td>' + day.dayOfWeek + '</td><td>' + (day.isHoliday ? 'YES' : '') + '</td>' +
-            '<td>' + (day.isHoliday ? '-' : formatTime(day.scan1)) + '</td><td>' + (day.isHoliday ? '-' : formatTime(day.scan2)) + '</td>' +
-            '<td>' + (day.isHoliday ? '-' : formatTime(day.scan3)) + '</td><td>' + (day.isHoliday ? '-' : formatTime(day.scan4)) + '</td>' +
+            '<td>' + (day.isHoliday ? '-' : (day.autoScan1 ? '-' : formatTime(day.scan1))) + '</td><td>' + (day.isHoliday ? '-' : (day.autoScan2 ? '-' : formatTime(day.scan2))) + '</td>' +
+            '<td>' + (day.isHoliday ? '-' : (day.autoScan3 ? '-' : formatTime(day.scan3))) + '</td><td>' + (day.isHoliday ? '-' : formatTime(day.scan4)) + '</td>' +
             '<td>' + (day.late1Minutes > 0 ? minutesToTime(day.late1Minutes) : '') + '</td><td>' + (day.late1Baht > 0 ? day.late1Baht : 0) + '</td>' +
             '<td>' + (day.isHoliday ? '-' : (day.breakRound || '')) + '</td>' +
             '<td>' + (day.late2Minutes > 0 ? minutesToTime(day.late2Minutes) : '') + '</td><td>' + (day.late2Baht > 0 ? day.late2Baht : 0) + '</td>' +

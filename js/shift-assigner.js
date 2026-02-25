@@ -507,6 +507,68 @@ function processEmployeeAttendanceWDD(employee, scans, shopName, month, year) {
 
         // Use pattern learning to improve scan classification
         const shifts = assignScansToShifts(dayScans, dayConfig, employeePattern);
+
+        // Smart break DL: ถ้ามี scan2 จริง (ไม่ใช่ auto) → ตรวจว่าใกล้ breakOutFixed ของกะไหน
+        // ถ้าใกล้กะอื่นมากกว่า → ใช้ break config ของกะนั้นคำนวณ DL
+        // เช่น ครัว กะ1 breakOut=13:30 DL=15:00, กะ2 breakOut=15:00 DL=16:30
+        // ถ้าออกพัก 14:55 → ใกล้กะ2 (15:00) → DL=16:30
+        let breakShiftNum = shiftNum; // กะที่ใช้คำนวณ break DL
+        if (shifts.scan2) {
+            const position = detectWddPosition(employee.name);
+            if (position === 'ครัว' || position === 'เดิน') {
+                const otherShiftNum = shiftNum === 1 ? 2 : 1;
+                const otherKey = `${position}_${otherShiftNum}`;
+                const otherConfig = WDD_SHIFT_CONFIGS[otherKey];
+                if (otherConfig && otherConfig.breakOutFixed && otherConfig.breakInDeadline) {
+                    const scan2Min = timeToMinutes(shifts.scan2);
+                    const curBreakOut = timeToMinutes(dayConfig.breakOutFixed);
+                    const otherBreakOut = timeToMinutes(otherConfig.breakOutFixed);
+                    const distCur = Math.abs(scan2Min - curBreakOut);
+                    const distOther = Math.abs(scan2Min - otherBreakOut);
+                    if (distOther < distCur) {
+                        // ใช้ break config ของกะอื่นคำนวณ DL
+                        const fixedOutMin = timeToMinutes(otherConfig.breakOutFixed);
+                        const baseDeadlineMin = timeToMinutes(otherConfig.breakInDeadline);
+                        let deadlineMin = baseDeadlineMin;
+                        if (scan2Min > fixedOutMin) {
+                            deadlineMin = baseDeadlineMin + (scan2Min - fixedOutMin);
+                        }
+                        const dh = Math.floor(deadlineMin / 60);
+                        const dm = deadlineMin % 60;
+                        shifts.breakDeadline = `${dh.toString().padStart(2, '0')}:${dm.toString().padStart(2, '0')}`;
+                        shifts.breakRound = otherConfig.breakOutFixed;
+                        breakShiftNum = otherShiftNum;
+                    }
+                }
+            } else if (position === 'เสิร์ฟ') {
+                const weekend = isWeekend(date);
+                const dayType = weekend ? 'weekend' : 'weekday';
+                const otherShiftNum = shiftNum === 1 ? 2 : 1;
+                const otherKey = `เสิร์ฟ_${otherShiftNum}_${dayType}`;
+                const otherConfig = WDD_SHIFT_CONFIGS[otherKey];
+                if (otherConfig && otherConfig.breakOutFixed && otherConfig.breakInDeadline) {
+                    const scan2Min = timeToMinutes(shifts.scan2);
+                    const curBreakOut = timeToMinutes(dayConfig.breakOutFixed);
+                    const otherBreakOut = timeToMinutes(otherConfig.breakOutFixed);
+                    const distCur = Math.abs(scan2Min - curBreakOut);
+                    const distOther = Math.abs(scan2Min - otherBreakOut);
+                    if (distOther < distCur) {
+                        const fixedOutMin = timeToMinutes(otherConfig.breakOutFixed);
+                        const baseDeadlineMin = timeToMinutes(otherConfig.breakInDeadline);
+                        let deadlineMin = baseDeadlineMin;
+                        if (scan2Min > fixedOutMin) {
+                            deadlineMin = baseDeadlineMin + (scan2Min - fixedOutMin);
+                        }
+                        const dh = Math.floor(deadlineMin / 60);
+                        const dm = deadlineMin % 60;
+                        shifts.breakDeadline = `${dh.toString().padStart(2, '0')}:${dm.toString().padStart(2, '0')}`;
+                        shifts.breakRound = otherConfig.breakOutFixed;
+                        breakShiftNum = otherShiftNum;
+                    }
+                }
+            }
+        }
+
         const noScans = !shifts.scan1 && !shifts.scan2 && !shifts.scan3 && !shifts.scan4;
 
         if (noScans) {
@@ -539,7 +601,7 @@ function processEmployeeAttendanceWDD(employee, scans, shopName, month, year) {
         // Build breakRound label: show actual computed deadline (may differ from config if scan2 was late)
         let breakRoundLabel = null;
         if (shifts.scan2 && shifts.breakDeadline) {
-            breakRoundLabel = `กะ${shiftNum} (DL ${shifts.breakDeadline})`;
+            breakRoundLabel = `กะ${breakShiftNum} (DL ${shifts.breakDeadline})`;
         } else if (shifts.breakRound) {
             breakRoundLabel = shifts.breakRound + ' (DL ' + shifts.breakDeadline + ')';
         }
