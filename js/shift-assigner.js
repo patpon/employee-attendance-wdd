@@ -135,10 +135,27 @@ function assignScansToShifts(scans, config, employeePattern = null) {
         : { scan: null, index: -1 };
     if (r3.index >= 0) usedIndices.add(r3.index);
 
-    // ถ้าไม่มี scan2 (พักออก) แต่มี scan3 → ย้าย scan3 ไปเป็น scan2
+    // ถ้าไม่มี scan2 (พักออก) แต่มี scan3 → วิเคราะห์ว่าควรเป็น scan2 หรือ scan3
+    // เทียบเวลา scan กับ breakOutFixed (พักออก) vs breakInDeadline (พักเข้า)
+    // ถ้าใกล้ breakOutFixed → ย้ายเป็น scan2 (ลืม scan พักเข้า)
+    // ถ้าใกล้ breakInDeadline → คงเป็น scan3 (ลืม scan พักออก)
     if (!r2.scan && r3.scan) {
-        r2 = r3;
-        r3 = { scan: null, index: -1 };
+        let promoteToScan2 = true; // default: ย้ายเป็น scan2 (เหมือนเดิม)
+        if (config.breakOutFixed && config.breakInDeadline) {
+            const scanMin = timeToMinutes(r3.scan.time);
+            const breakOutMin = timeToMinutes(config.breakOutFixed);
+            const breakInMin = timeToMinutes(config.breakInDeadline);
+            const distToBreakOut = Math.abs(scanMin - breakOutMin);
+            const distToBreakIn = Math.abs(scanMin - breakInMin);
+            // ถ้า scan ใกล้ breakInDeadline มากกว่า breakOutFixed → น่าจะเป็น scan3 (ลืม scan พักออก)
+            if (distToBreakIn < distToBreakOut) {
+                promoteToScan2 = false; // คงเป็น scan3
+            }
+        }
+        if (promoteToScan2) {
+            r2 = r3;
+            r3 = { scan: null, index: -1 };
+        }
     }
 
     // Scan 4: เลิกงาน - latest scan in window (cross-midnight supported)
@@ -155,13 +172,24 @@ function assignScansToShifts(scans, config, employeePattern = null) {
         r4 = { scan: bestScan, index: bestIndex };
     }
 
+    // Auto-fill scan1: ถ้าไม่มี scan1 (ลืม scan เข้างาน) แต่มี scan อื่น
+    // → สมมติเข้าตรง DL → ไม่หัก
+    let autoScan1 = null;
+    const hasAnyScan = r1.scan || r2.scan || r3.scan || r4.scan;
+    if (!r1.scan && hasAnyScan && config.shift1Deadline) {
+        autoScan1 = config.shift1Deadline;
+    }
+
     // Break deadline logic:
     // If config has breakInDeadline (WDD), use it directly.
     // Otherwise fall back to legacy round A/B/C/D logic.
     let breakDeadline = null;
     let breakRound = null;
+    let autoScan2 = null;
+    let autoScan3 = null;
+
     if (r2.scan) {
-        // Unified logic: if config has breakOutFixed and breakInDeadline, shift deadline when scan2 is late
+        // มี scan2 (พักออก) → คำนวณ breakDeadline ตามปกติ
         if (config.breakOutFixed && config.breakInDeadline) {
             const fixedOutMin = timeToMinutes(config.breakOutFixed);
             const actualOutMin = timeToMinutes(r2.scan.time);
@@ -175,23 +203,28 @@ function assignScansToShifts(scans, config, employeePattern = null) {
             breakDeadline = `${dh.toString().padStart(2, '0')}:${dm.toString().padStart(2, '0')}`;
             breakRound = config.breakOutFixed || null;
         }
-    }
-
-    // Auto-fill scan3: ถ้ามี scan2 (พักออก) แต่ไม่มี scan3 (พักเข้า) และ config มี breakInDeadline
-    // → สมมติว่าพนักงานพักเข้าตรง DL (ไม่หัก) → ใส่ breakDeadline เป็น scan3 อัตโนมัติ
-    let autoScan3 = null;
-    if (r2.scan && !r3.scan && breakDeadline) {
-        autoScan3 = breakDeadline;
+        // Auto-fill scan3: มี scan2 แต่ไม่มี scan3 → สมมติพักเข้าตรง DL
+        if (!r3.scan && breakDeadline) {
+            autoScan3 = breakDeadline;
+        }
+    } else if (!r2.scan && r3.scan && config.breakOutFixed && config.breakInDeadline) {
+        // ไม่มี scan2 (ลืม scan พักออก) แต่มี scan3 (พักเข้า)
+        // → สมมติพักออกตรงเวลา breakOutFixed → คำนวณ breakDeadline ปกติ
+        autoScan2 = config.breakOutFixed;
+        breakDeadline = config.breakInDeadline;
+        breakRound = config.breakOutFixed;
     }
 
     return {
-        scan1: r1.scan ? r1.scan.time.substring(0, 5) : null,
-        scan2: r2.scan ? r2.scan.time.substring(0, 5) : null,
+        scan1: r1.scan ? r1.scan.time.substring(0, 5) : autoScan1,
+        scan2: r2.scan ? r2.scan.time.substring(0, 5) : autoScan2,
         scan3: r3.scan ? r3.scan.time.substring(0, 5) : autoScan3,
         scan4: r4.scan ? r4.scan.time.substring(0, 5) : null,
         breakRound,
         breakDeadline,
-        autoScan3: !!autoScan3, // flag ว่า scan3 เป็น auto-fill (ไม่ใช่ scan จริง)
+        autoScan1: !!autoScan1, // flag ว่า scan1 เป็น auto-fill (ลืม scan เข้างาน)
+        autoScan2: !!autoScan2, // flag ว่า scan2 เป็น auto-fill (ลืม scan พักออก)
+        autoScan3: !!autoScan3, // flag ว่า scan3 เป็น auto-fill (ลืม scan พักเข้า)
     };
 }
 
@@ -271,6 +304,8 @@ function processEmployeeAttendance(employee, scans, shopName, month, year) {
         days.push({
             date, dayOfWeek, isHoliday: false, isAbsent, isLeave: false,
             scan1: shifts.scan1, scan2: shifts.scan2, scan3: shifts.scan3, scan4: shifts.scan4,
+            autoScan1: shifts.autoScan1 || false,
+            autoScan2: shifts.autoScan2 || false,
             autoScan3: shifts.autoScan3 || false,
             breakRound: shifts.breakDeadline ? ('(DL ' + shifts.breakDeadline + ')') : null,
             late1Minutes: late1.minutes, late1Baht: late1.baht,
@@ -486,6 +521,8 @@ function processEmployeeAttendanceWDD(employee, scans, shopName, month, year) {
         days.push({
             date, dayOfWeek, isHoliday: false, isAbsent, isLeave: false,
             scan1: shifts.scan1, scan2: shifts.scan2, scan3: shifts.scan3, scan4: shifts.scan4,
+            autoScan1: shifts.autoScan1 || false,
+            autoScan2: shifts.autoScan2 || false,
             autoScan3: shifts.autoScan3 || false,
             breakRound: breakRoundLabel,
             late1Minutes: late1.minutes, late1Baht: late1.baht,
