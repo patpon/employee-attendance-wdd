@@ -382,6 +382,11 @@ async function processImport() {
             scansByEmp.get(scan.empCode).push(scan);
         }
 
+        // Load existing attendance to preserve HR edits (waive flags, notes, manual scan3)
+        let existingAttList = [];
+        try { existingAttList = await api.getAttendance({ shopId, month, year }); } catch {}
+        const existingAttByEmp = new Map(existingAttList.map(a => [a.empCode, a]));
+
         // Process each employee using ALL merged scans
         let processedCount = 0;
         for (const [empCode, empScans] of scansByEmp) {
@@ -391,6 +396,48 @@ async function processImport() {
             if (empScans.length === 0) continue;
 
             const attendance = processEmployeeAttendanceWDD(employee, empScans, shopName, month, year);
+
+            // Merge HR overrides: preserve manual scan3, waive flags, notes
+            const oldAtt = existingAttByEmp.get(empCode);
+            if (oldAtt && oldAtt.days) {
+                const oldDaysByDate = new Map(oldAtt.days.map(d => [d.date, d]));
+                for (const day of attendance.days) {
+                    const oldDay = oldDaysByDate.get(day.date);
+                    if (!oldDay || oldDay.isHoliday) continue;
+                    if (!day.scan3 && oldDay.scan3) {
+                        day.scan3 = oldDay.scan3;
+                        const baseConfig = employee.shiftConfig;
+                        const deductRate = (baseConfig && baseConfig.deductionPerMinute) || 1;
+                        const firstForConfig = (day.scan1 && timeToMinutes(day.scan1) >= 180) ? day.scan1 : null;
+                        const wddConfig = getWddDayConfig(employee.name, day.date, firstForConfig);
+                        const config = wddConfig || baseConfig;
+                        if (day.scan2 && config.breakOutFixed && config.breakInDeadline) {
+                            const fixedOutMin = timeToMinutes(config.breakOutFixed);
+                            const actualOutMin = timeToMinutes(day.scan2);
+                            const baseDeadlineMin = timeToMinutes(config.breakInDeadline);
+                            let deadlineMin = baseDeadlineMin;
+                            if (actualOutMin > fixedOutMin) deadlineMin = baseDeadlineMin + (actualOutMin - fixedOutMin);
+                            const dh = Math.floor(deadlineMin / 60), dm = deadlineMin % 60;
+                            const breakDL = `${dh.toString().padStart(2,'0')}:${dm.toString().padStart(2,'0')}`;
+                            const late2 = calculateLateness(day.scan3, breakDL, deductRate);
+                            day.late2Minutes = late2.minutes;
+                            day.late2Baht = late2.baht;
+                        }
+                    }
+                    if (oldDay.waiveLate1 !== undefined) day.waiveLate1 = oldDay.waiveLate1;
+                    if (oldDay.waiveLate2 !== undefined) day.waiveLate2 = oldDay.waiveLate2;
+                    if (oldDay.note) day.note = oldDay.note;
+                }
+                let t1 = 0, t2 = 0;
+                for (const d of attendance.days) {
+                    if (!d.waiveLate1) t1 += (d.late1Baht || 0);
+                    if (!d.waiveLate2) t2 += (d.late2Baht || 0);
+                }
+                attendance.totalLate1Baht = t1;
+                attendance.totalLate2Baht = t2;
+                attendance.totalDeduction = t1 + t2;
+            }
+
             await api.saveAttendance(attendance);
             processedCount++;
         }
@@ -514,6 +561,12 @@ async function reprocessAttendance() {
             scansByEmp.get(scan.empCode).push(scan);
         }
 
+        // Load existing attendance to preserve HR edits
+        statusEl.textContent = 'กำลังโหลดข้อมูลเดิม (preserve การแก้ไข HR)...';
+        let existingAttList = [];
+        try { existingAttList = await api.getAttendance({ shopId, month, year }); } catch {}
+        const existingAttByEmp = new Map(existingAttList.map(a => [a.empCode, a]));
+
         let processedCount = 0;
         const totalEmp = scansByEmp.size;
         for (const [empCode, empScans] of scansByEmp) {
@@ -522,6 +575,55 @@ async function reprocessAttendance() {
             processedCount++;
             statusEl.textContent = `กำลังประมวลผล ${processedCount}/${totalEmp} คน...`;
             const attendance = processEmployeeAttendanceWDD(employee, empScans, shopName, month, year);
+
+            // Merge HR overrides: preserve scan values that HR manually entered
+            // (i.e. values that differ from raw scan assignment, like scan3 typed in manually)
+            const oldAtt = existingAttByEmp.get(empCode);
+            if (oldAtt && oldAtt.days) {
+                const oldDaysByDate = new Map(oldAtt.days.map(d => [d.date, d]));
+                for (const day of attendance.days) {
+                    const oldDay = oldDaysByDate.get(day.date);
+                    if (!oldDay || oldDay.isHoliday) continue;
+                    // Preserve scan3 if HR entered it manually (new result has no scan3 but old has one)
+                    if (!day.scan3 && oldDay.scan3) {
+                        day.scan3 = oldDay.scan3;
+                        // Recalculate breakDeadline label and late2 with the preserved scan3
+                        const baseConfig = employee.shiftConfig;
+                        const deductRate = (baseConfig && baseConfig.deductionPerMinute) || 1;
+                        const firstForConfig = (day.scan1 && timeToMinutes(day.scan1) >= 180) ? day.scan1 : null;
+                        const wddConfig = getWddDayConfig(employee.name, day.date, firstForConfig);
+                        const config = wddConfig || baseConfig;
+                        if (day.scan2 && config.breakOutFixed && config.breakInDeadline) {
+                            const fixedOutMin = timeToMinutes(config.breakOutFixed);
+                            const actualOutMin = timeToMinutes(day.scan2);
+                            const baseDeadlineMin = timeToMinutes(config.breakInDeadline);
+                            let deadlineMin = baseDeadlineMin;
+                            if (actualOutMin > fixedOutMin) deadlineMin = baseDeadlineMin + (actualOutMin - fixedOutMin);
+                            const dh = Math.floor(deadlineMin / 60), dm = deadlineMin % 60;
+                            const breakDL = `${dh.toString().padStart(2,'0')}:${dm.toString().padStart(2,'0')}`;
+                            const late2 = calculateLateness(day.scan3, breakDL, deductRate);
+                            day.late2Minutes = late2.minutes;
+                            day.late2Baht = late2.baht;
+                            attendance.totalLate2Baht = (attendance.totalLate2Baht || 0) + late2.baht;
+                            attendance.totalDeduction = (attendance.totalLate1Baht || 0) + attendance.totalLate2Baht;
+                        }
+                    }
+                    // Preserve waive flags and notes
+                    if (oldDay.waiveLate1 !== undefined) day.waiveLate1 = oldDay.waiveLate1;
+                    if (oldDay.waiveLate2 !== undefined) day.waiveLate2 = oldDay.waiveLate2;
+                    if (oldDay.note) day.note = oldDay.note;
+                }
+                // Recalc totals after merge
+                let t1 = 0, t2 = 0;
+                for (const d of attendance.days) {
+                    if (!d.waiveLate1) t1 += (d.late1Baht || 0);
+                    if (!d.waiveLate2) t2 += (d.late2Baht || 0);
+                }
+                attendance.totalLate1Baht = t1;
+                attendance.totalLate2Baht = t2;
+                attendance.totalDeduction = t1 + t2;
+            }
+
             await api.saveAttendance(attendance);
         }
 
