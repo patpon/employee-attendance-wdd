@@ -44,6 +44,7 @@ function calculateStdDev(values, mean) {
 function analyzeEmployeePattern(employeeRecords, days = 30) {
     const scan1Times = [];
     const scan2Times = [];
+    const scan3Times = [];
     
     // Take last N working days
     const recentRecords = employeeRecords
@@ -51,32 +52,47 @@ function analyzeEmployeePattern(employeeRecords, days = 30) {
         .slice(-days);
     
     for (const record of recentRecords) {
-        if (record.scan1) {
+        if (record.scan1 && !record.autoScan1) {
             const minutes = timeToMinutes(record.scan1);
             if (minutes >= 300 && minutes <= 900) { // 05:00 - 15:00 (reasonable work hours)
                 scan1Times.push(minutes);
             }
         }
-        if (record.scan2) {
+        if (record.scan2 && !record.autoScan2) {
             const minutes = timeToMinutes(record.scan2);
             if (minutes >= 660 && minutes <= 1080) { // 11:00 - 18:00 (reasonable break hours)
                 scan2Times.push(minutes);
+            }
+        }
+        if (record.scan3 && !record.autoScan3) {
+            const minutes = timeToMinutes(record.scan3);
+            if (minutes >= 660 && minutes <= 1140) { // 11:00 - 19:00 (reasonable break-in hours)
+                scan3Times.push(minutes);
             }
         }
     }
     
     const scan1Mean = calculateMean(scan1Times);
     const scan2Mean = calculateMean(scan2Times);
+    const scan2Median = calculateMedian(scan2Times);
+    const scan3Mean = calculateMean(scan3Times);
+    const scan3Median = calculateMedian(scan3Times);
     
     return {
         typicalScan1Minutes: scan1Mean,
         typicalScan2Minutes: scan2Mean,
+        typicalScan2Median: scan2Median,
+        typicalScan3Minutes: scan3Mean,
+        typicalScan3Median: scan3Median,
         scan1StdDev: scan1Mean ? calculateStdDev(scan1Times, scan1Mean) : 0,
         scan2StdDev: scan2Mean ? calculateStdDev(scan2Times, scan2Mean) : 0,
+        scan3StdDev: scan3Mean ? calculateStdDev(scan3Times, scan3Mean) : 0,
         scan1DataPoints: scan1Times.length,
         scan2DataPoints: scan2Times.length,
-        scan1Times: scan1Times, // raw data for debugging
+        scan3DataPoints: scan3Times.length,
+        scan1Times: scan1Times,
         scan2Times: scan2Times,
+        scan3Times: scan3Times,
     };
 }
 

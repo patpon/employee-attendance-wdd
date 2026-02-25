@@ -136,18 +136,23 @@ function assignScansToShifts(scans, config, employeePattern = null) {
     if (r3.index >= 0) usedIndices.add(r3.index);
 
     // ถ้าไม่มี scan2 (พักออก) แต่มี scan3 → วิเคราะห์ว่าควรเป็น scan2 หรือ scan3
-    // เทียบเวลา scan กับ breakOutFixed (พักออก) vs breakInDeadline (พักเข้า)
-    // ถ้าใกล้ breakOutFixed → ย้ายเป็น scan2 (ลืม scan พักเข้า)
-    // ถ้าใกล้ breakInDeadline → คงเป็น scan3 (ลืม scan พักออก)
+    // ใช้ pattern median ของพนักงาน (ถ้ามี) แทน config เพื่อความแม่นยำ
+    // เช่น ครัว config breakOutFixed=13:30 แต่จริงพักออก ~15:00
     if (!r2.scan && r3.scan) {
         let promoteToScan2 = true; // default: ย้ายเป็น scan2 (เหมือนเดิม)
-        if (config.breakOutFixed && config.breakInDeadline) {
+        // ใช้ pattern median ถ้ามีข้อมูลเพียงพอ (>= 3 วัน), ไม่งั้น fallback ไป config
+        const patternScan2Min = (employeePattern && employeePattern.typicalScan2Median && employeePattern.scan2DataPoints >= 3)
+            ? employeePattern.typicalScan2Median : null;
+        const patternScan3Min = (employeePattern && employeePattern.typicalScan3Median && employeePattern.scan3DataPoints >= 3)
+            ? employeePattern.typicalScan3Median : null;
+        const breakOutRef = patternScan2Min || (config.breakOutFixed ? timeToMinutes(config.breakOutFixed) : null);
+        const breakInRef = patternScan3Min || (config.breakInDeadline ? timeToMinutes(config.breakInDeadline) : null);
+
+        if (breakOutRef && breakInRef) {
             const scanMin = timeToMinutes(r3.scan.time);
-            const breakOutMin = timeToMinutes(config.breakOutFixed);
-            const breakInMin = timeToMinutes(config.breakInDeadline);
-            const distToBreakOut = Math.abs(scanMin - breakOutMin);
-            const distToBreakIn = Math.abs(scanMin - breakInMin);
-            // ถ้า scan ใกล้ breakInDeadline มากกว่า breakOutFixed → น่าจะเป็น scan3 (ลืม scan พักออก)
+            const distToBreakOut = Math.abs(scanMin - breakOutRef);
+            const distToBreakIn = Math.abs(scanMin - breakInRef);
+            // ถ้า scan ใกล้ breakIn มากกว่า breakOut → น่าจะเป็น scan3 (ลืม scan พักออก)
             if (distToBreakIn < distToBreakOut) {
                 promoteToScan2 = false; // คงเป็น scan3
             }
@@ -209,10 +214,28 @@ function assignScansToShifts(scans, config, employeePattern = null) {
         }
     } else if (!r2.scan && r3.scan && config.breakOutFixed && config.breakInDeadline) {
         // ไม่มี scan2 (ลืม scan พักออก) แต่มี scan3 (พักเข้า)
-        // → สมมติพักออกตรงเวลา breakOutFixed → คำนวณ breakDeadline ปกติ
-        autoScan2 = config.breakOutFixed;
-        breakDeadline = config.breakInDeadline;
-        breakRound = config.breakOutFixed;
+        // → ใช้ pattern median ของ scan2 จริง (ถ้ามี >= 3 วัน) แทน config.breakOutFixed
+        const patScan2Med = (employeePattern && employeePattern.typicalScan2Median && employeePattern.scan2DataPoints >= 3)
+            ? employeePattern.typicalScan2Median : null;
+        if (patScan2Med) {
+            const ph = Math.floor(patScan2Med / 60);
+            const pm = patScan2Med % 60;
+            autoScan2 = `${ph.toString().padStart(2, '0')}:${pm.toString().padStart(2, '0')}`;
+        } else {
+            autoScan2 = config.breakOutFixed;
+        }
+        // คำนวณ breakDeadline จาก autoScan2 จริง
+        const fixedOutMin = timeToMinutes(config.breakOutFixed);
+        const autoOutMin = timeToMinutes(autoScan2);
+        const baseDeadlineMin = timeToMinutes(config.breakInDeadline);
+        let deadlineMin = baseDeadlineMin;
+        if (autoOutMin > fixedOutMin) {
+            deadlineMin = baseDeadlineMin + (autoOutMin - fixedOutMin);
+        }
+        const dh2 = Math.floor(deadlineMin / 60);
+        const dm2 = deadlineMin % 60;
+        breakDeadline = `${dh2.toString().padStart(2, '0')}:${dm2.toString().padStart(2, '0')}`;
+        breakRound = autoScan2;
     }
 
     return {
@@ -386,6 +409,9 @@ function processEmployeeAttendanceWDD(employee, scans, shopName, month, year) {
                     scan2: shifts.scan2,
                     scan3: shifts.scan3,
                     scan4: shifts.scan4,
+                    autoScan1: shifts.autoScan1 || false,
+                    autoScan2: shifts.autoScan2 || false,
+                    autoScan3: shifts.autoScan3 || false,
                     isHoliday: false,
                     isAbsent: !shifts.scan1 && !shifts.scan4
                 });
