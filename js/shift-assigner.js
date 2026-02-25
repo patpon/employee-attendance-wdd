@@ -72,7 +72,7 @@ function findLastScan(scans, windowStart, windowEnd, usedIndices) {
     return { scan: bestScan, index: bestIndex };
 }
 
-function assignScansToShifts(scans, config) {
+function assignScansToShifts(scans, config, employeePattern = null) {
     if (!scans || scans.length === 0) {
         return { scan1: null, scan2: null, scan3: null, scan4: null, breakRound: null, breakDeadline: null };
     }
@@ -94,7 +94,25 @@ function assignScansToShifts(scans, config) {
             // ถ้าใกล้ shift2Start มากกว่า แสดงว่าพนักงานลืม scan เข้า → ปล่อยให้ scan2 จับแทน
             const distToShift1 = Math.abs(prospMin - s1EndMin);
             const distToShift2 = Math.abs(s2StartMin - prospMin);
-            if (distToShift1 <= distToShift2) {
+            
+            // Pattern learning: ถ้ามีข้อมูล pattern ใช้ช่วยตัดสินใจ
+            let useFallback = distToShift1 <= distToShift2;
+            if (employeePattern && employeePattern.typicalScan1Minutes) {
+                const distToPatternScan1 = Math.abs(prospMin - employeePattern.typicalScan1Minutes);
+                const distToPatternScan2 = employeePattern.typicalScan2Minutes 
+                    ? Math.abs(prospMin - employeePattern.typicalScan2Minutes) 
+                    : Infinity;
+                // ถ้าใกล้ pattern scan1 มากกว่า scan2 → ใช้ fallback (เป็น scan1)
+                // ถ้าใกล้ pattern scan2 มากกว่า → ไม่ใช้ fallback (เป็น scan2)
+                if (distToPatternScan1 < distToPatternScan2 * 0.6) {
+                    useFallback = true;
+                } else if (distToPatternScan2 < distToPatternScan1 * 0.6) {
+                    useFallback = false;
+                }
+                // ถ้าไม่ชัดเจน ใช้ distance-based logic เดิม
+            }
+            
+            if (useFallback) {
                 r1 = prospective;
             }
         }
@@ -280,6 +298,7 @@ function processEmployeeAttendance(employee, scans, shopName, month, year) {
 //   - Employee name suffix (position: ครัว/เดิน/เสิร์ฟ)
 //   - First scan time (< 11:00 = กะ 1, >= 11:00 = กะ 2)
 //   - Day of week (weekday/weekend for เสิร์ฟ only)
+//   - Pattern learning from historical data
 // Falls back to processEmployeeAttendance() for non-WDD positions
 // ============================================
 function processEmployeeAttendanceWDD(employee, scans, shopName, month, year) {
@@ -298,6 +317,40 @@ function processEmployeeAttendanceWDD(employee, scans, shopName, month, year) {
     const days = [];
     let totalHolidays = 0, totalAbsent = 0, totalLeave = 0, totalWorkingDays = 0;
     let totalLate1 = 0, totalLate2 = 0;
+    
+    // First pass: analyze employee pattern from all available data
+    // Build temporary records for pattern analysis
+    const tempRecords = [];
+    for (const date of allDates) {
+        const dayScans = scansByDate[date] || [];
+        if (dayScans.length > 0 && !holidayDates.includes(date)) {
+            // Get base shifts without pattern first
+            const dayDate = new Date(date);
+            const dayOfWeek = THAI_DAYS[dayDate.getDay()];
+            const isHoliday = holidayDates.includes(date) && dayScans.length === 0;
+            if (!isHoliday) {
+                // Quick shift detection
+                const nonMidnightScans = dayScans.filter(s => timeToMinutes(s.time) >= 180);
+                const candidateScans = nonMidnightScans.length > 0 ? nonMidnightScans : dayScans;
+                const sortedScans = [...candidateScans].sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
+                let firstScanTime = sortedScans[0] ? sortedScans[0].time.substring(0, 5) : null;
+                const dayConfig = getWddDayConfig(employee.name, date, firstScanTime) || baseConfig;
+                const shifts = assignScansToShifts(dayScans, dayConfig);
+                tempRecords.push({
+                    date,
+                    scan1: shifts.scan1,
+                    scan2: shifts.scan2,
+                    scan3: shifts.scan3,
+                    scan4: shifts.scan4,
+                    isHoliday: false,
+                    isAbsent: !shifts.scan1 && !shifts.scan4
+                });
+            }
+        }
+    }
+    const employeePattern = typeof analyzeEmployeePattern === 'function' 
+        ? analyzeEmployeePattern(tempRecords, 30) 
+        : null;
 
     for (const date of allDates) {
         const dayDate = new Date(date);
@@ -382,7 +435,8 @@ function processEmployeeAttendanceWDD(employee, scans, shopName, month, year) {
         const dayConfig = getWddDayConfig(employee.name, date, firstScanTime) || baseConfig;
         const shiftNum = detectWddShiftNum(firstScanTime);
 
-        const shifts = assignScansToShifts(dayScans, dayConfig);
+        // Use pattern learning to improve scan classification
+        const shifts = assignScansToShifts(dayScans, dayConfig, employeePattern);
         const noScans = !shifts.scan1 && !shifts.scan2 && !shifts.scan3 && !shifts.scan4;
 
         if (noScans) {
