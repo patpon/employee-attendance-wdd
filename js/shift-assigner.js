@@ -214,28 +214,10 @@ function assignScansToShifts(scans, config, employeePattern = null) {
         }
     } else if (!r2.scan && r3.scan && config.breakOutFixed && config.breakInDeadline) {
         // ไม่มี scan2 (ลืม scan พักออก) แต่มี scan3 (พักเข้า)
-        // → ใช้ pattern median ของ scan2 จริง (ถ้ามี >= 3 วัน) แทน config.breakOutFixed
-        const patScan2Med = (employeePattern && employeePattern.typicalScan2Median && employeePattern.scan2DataPoints >= 3)
-            ? employeePattern.typicalScan2Median : null;
-        if (patScan2Med) {
-            const ph = Math.floor(patScan2Med / 60);
-            const pm = patScan2Med % 60;
-            autoScan2 = `${ph.toString().padStart(2, '0')}:${pm.toString().padStart(2, '0')}`;
-        } else {
-            autoScan2 = config.breakOutFixed;
-        }
-        // คำนวณ breakDeadline จาก autoScan2 จริง
-        const fixedOutMin = timeToMinutes(config.breakOutFixed);
-        const autoOutMin = timeToMinutes(autoScan2);
-        const baseDeadlineMin = timeToMinutes(config.breakInDeadline);
-        let deadlineMin = baseDeadlineMin;
-        if (autoOutMin > fixedOutMin) {
-            deadlineMin = baseDeadlineMin + (autoOutMin - fixedOutMin);
-        }
-        const dh2 = Math.floor(deadlineMin / 60);
-        const dm2 = deadlineMin % 60;
-        breakDeadline = `${dh2.toString().padStart(2, '0')}:${dm2.toString().padStart(2, '0')}`;
-        breakRound = autoScan2;
+        // → ใช้ breakOutFixed ของกะปัจจุบัน (ไม่ใช้ pattern เพราะ pattern อาจรวมข้อมูลข้ามกะ)
+        autoScan2 = config.breakOutFixed;
+        breakDeadline = config.breakInDeadline;
+        breakRound = config.breakOutFixed;
     }
 
     return {
@@ -513,7 +495,7 @@ function processEmployeeAttendanceWDD(employee, scans, shopName, month, year) {
         // เช่น ครัว กะ1 breakOut=13:30 DL=15:00, กะ2 breakOut=15:00 DL=16:30
         // ถ้าออกพัก 14:55 → ใกล้กะ2 (15:00) → DL=16:30
         let breakShiftNum = shiftNum; // กะที่ใช้คำนวณ break DL
-        if (shifts.scan2) {
+        if (shifts.scan2 && !shifts.autoScan2) {
             const position = detectWddPosition(employee.name);
             if (position === 'ครัว' || position === 'เดิน') {
                 const otherShiftNum = shiftNum === 1 ? 2 : 1;
