@@ -775,7 +775,7 @@ function renderAttDetail(record, rIdx) {
                                 <td style="${day.waiveLate2 ? 'text-decoration:line-through;color:#9ca3af;' : ''}">${day.late2Minutes > 0 ? minutesToTime(day.late2Minutes) : ''}</td>
                                 <td class="text-red-600" style="${day.waiveLate2 ? 'text-decoration:line-through;color:#9ca3af;' : ''}">${day.late2Baht > 0 ? day.late2Baht : 0}</td>
                                 <td>${day.isHoliday ? '' : ((day.late1Baht > 0 || day.late2Baht > 0 || day.waiveLate1 || day.waiveLate2) ? '<div style="display:flex;gap:2px;justify-content:center;">' + (day.late1Baht > 0 || day.waiveLate1 ? '<button onclick="toggleWaive('+rIdx+','+idx+',1)" title="'+(day.waiveLate1?'ยกเลิกยกเว้นเข้าสาย':'ยกเว้นเข้าสาย')+'" style="font-size:10px;padding:2px 6px;border:1px solid '+(day.waiveLate1?'#059669':'#f59e0b')+';background:'+(day.waiveLate1?'#ecfdf5':'#fffbeb')+';color:'+(day.waiveLate1?'#059669':'#d97706')+';border-radius:4px;cursor:pointer;white-space:nowrap;">'+(day.waiveLate1?'&#10003; เข้า':'เข้า')+'</button>' : '') + (day.late2Baht > 0 || day.waiveLate2 ? '<button onclick="toggleWaive('+rIdx+','+idx+',2)" title="'+(day.waiveLate2?'ยกเลิกยกเว้นพักสาย':'ยกเว้นพักสาย')+'" style="font-size:10px;padding:2px 6px;border:1px solid '+(day.waiveLate2?'#059669':'#f59e0b')+';background:'+(day.waiveLate2?'#ecfdf5':'#fffbeb')+';color:'+(day.waiveLate2?'#059669':'#d97706')+';border-radius:4px;cursor:pointer;white-space:nowrap;">'+(day.waiveLate2?'&#10003; พัก':'พัก')+'</button>' : '') + '</div>' : '')}</td>
-                                <td style="min-width:120px;"><input type="text" class="note-input" value="${escHtml(day.note||'')}" placeholder="หมายเหตุ..." onchange="updateNote(${rIdx},${idx},this.value)" style="width:100%;padding:2px 6px;border:1px solid var(--input-border);border-radius:4px;font-size:11px;font-family:inherit;background:var(--input-bg);color:var(--text-primary);outline:none;"></td>
+                                <td style="min-width:120px;${day.note ? 'background:#fffbeb;border-left:3px solid #f59e0b;' : ''}">${day.note ? '<span style="display:block;font-size:10px;color:#92400e;font-weight:700;letter-spacing:0.3px;margin-bottom:1px;">📝 หมายเหตุ</span>' : ''}<input type="text" class="note-input" value="${escHtml(day.note||'')}" placeholder="หมายเหตุ..." onchange="updateNote(${rIdx},${idx},this.value)" style="width:100%;padding:2px 6px;border:1px solid ${day.note ? '#f59e0b' : 'var(--input-border)'};border-radius:4px;font-size:${day.note ? '12px' : '11px'};font-family:inherit;background:${day.note ? '#fef3c7' : 'var(--input-bg)'};color:${day.note ? '#78350f' : 'var(--text-primary)'};outline:none;font-weight:${day.note ? '600' : 'normal'};"></td>
                             </tr>`;
                         }).join('')}
                     </tbody>
@@ -900,6 +900,7 @@ function updateNote(rIdx, dayIdx, value) {
     const record = attendanceRecords[rIdx];
     const day = record.days[dayIdx];
     day.note = value.trim();
+    renderAttList();
 }
 
 async function saveAttRecord(rIdx) {
