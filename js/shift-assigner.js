@@ -588,6 +588,10 @@ function processEmployeeAttendanceWDD(employee, scans, shopName, month, year) {
             breakRoundLabel = shifts.breakRound + ' (DL ' + shifts.breakDeadline + ')';
         }
 
+        // Auto note: ถ้าหักเงินรวมวันเดียว > 20 บาท → เตือนให้ตรวจสอบ
+        const totalDayDeduction = late1.baht + late2.baht;
+        const autoNote = totalDayDeduction > 20 ? 'กรุณาตรวจสอบ' : '';
+
         days.push({
             date, dayOfWeek, isHoliday: false, isAbsent, isLeave: false,
             scan1: shifts.scan1, scan2: shifts.scan2, scan3: shifts.scan3, scan4: shifts.scan4,
@@ -597,7 +601,7 @@ function processEmployeeAttendanceWDD(employee, scans, shopName, month, year) {
             breakRound: breakRoundLabel,
             late1Minutes: late1.minutes, late1Baht: late1.baht,
             late2Minutes: late2.minutes, late2Baht: late2.baht,
-            note: '', specialNote: '',
+            note: autoNote, specialNote: '',
         });
     }
 
