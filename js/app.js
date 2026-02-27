@@ -124,6 +124,7 @@ function renderPage(page) {
         case 'import': renderImport(main); break;
         case 'attendance': renderAttendance(main); break;
         case 'reports': renderReports(main); break;
+        case 'bonus': renderBonus(main); break;
         case 'settings': renderSettings(main); break;
         default: main.innerHTML = '<p>Page not found</p>';
     }

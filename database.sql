@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS `employees` (
   `shopId`      VARCHAR(30)  NOT NULL,
   `shiftConfig` JSON         NOT NULL,
   `holidays`    JSON         NOT NULL,
+  `isActive`    TINYINT(1)   NOT NULL DEFAULT 1,
   `createdAt`   DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `updatedAt`   DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   PRIMARY KEY (`id`),
@@ -92,3 +93,43 @@ CREATE TABLE IF NOT EXISTS `import_sessions` (
   `recordCount` INT          NOT NULL,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `bonus_records` (
+  `id`                VARCHAR(30)  NOT NULL,
+  `shopId`            VARCHAR(30)  NOT NULL,
+  `employeeId`        VARCHAR(30)  NOT NULL,
+  `empCode`           VARCHAR(255) NOT NULL,
+  `empName`           VARCHAR(255) NOT NULL,
+  `year`              INT          NOT NULL,
+  `photo`             LONGTEXT     NULL,
+  `attendanceSummary` JSON         NULL,
+  `bonusAmount`       DECIMAL(10,2) NULL,
+  `bonusStatus`       VARCHAR(20)  NOT NULL DEFAULT 'pending',
+  `bonusNote`         TEXT         NULL,
+  `createdAt`         DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `updatedAt`         DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `bonus_records_emp_year_key` (`employeeId`, `year`),
+  INDEX `bonus_records_year_idx` (`shopId`, `year`),
+  CONSTRAINT `bonus_records_employeeId_fkey`
+    FOREIGN KEY (`employeeId`) REFERENCES `employees` (`id`)
+    ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `behavior_logs` (
+  `id`             INT          NOT NULL AUTO_INCREMENT,
+  `bonusRecordId`  VARCHAR(30)  NOT NULL,
+  `type`           VARCHAR(10)  NOT NULL DEFAULT 'good' COMMENT 'good or bad',
+  `date`           VARCHAR(10)  NULL,
+  `description`    TEXT         NOT NULL,
+  `createdAt`      DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `updatedAt`      DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (`id`),
+  INDEX `behavior_logs_bonusRecordId_idx` (`bonusRecordId`),
+  CONSTRAINT `behavior_logs_bonusRecordId_fkey`
+    FOREIGN KEY (`bonusRecordId`) REFERENCES `bonus_records` (`id`)
+    ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Migrate: add type column if not exists (for existing installations)
+ALTER TABLE `behavior_logs` ADD COLUMN IF NOT EXISTS `type` VARCHAR(10) NOT NULL DEFAULT 'good' COMMENT 'good or bad' AFTER `bonusRecordId`;

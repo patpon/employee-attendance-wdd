@@ -9,17 +9,24 @@ $shopId = $_GET['shopId'] ?? null;
 
 // GET /api/employees.php - List employees
 if ($method === 'GET' && !$id) {
+    $activeOnly = isset($_GET['activeOnly']) && $_GET['activeOnly'] === '1';
     if ($shopId) {
-        $stmt = $db->prepare('SELECT * FROM employees WHERE shopId = ? ORDER BY createdAt DESC');
+        $sql = 'SELECT * FROM employees WHERE shopId = ?';
+        if ($activeOnly) $sql .= ' AND (isActive IS NULL OR isActive = 1)';
+        $sql .= ' ORDER BY CAST(empCode AS UNSIGNED), empCode';
+        $stmt = $db->prepare($sql);
         $stmt->execute([$shopId]);
     } else {
-        $stmt = $db->query('SELECT * FROM employees ORDER BY createdAt DESC');
+        $sql = 'SELECT * FROM employees';
+        if ($activeOnly) $sql .= ' WHERE (isActive IS NULL OR isActive = 1)';
+        $sql .= ' ORDER BY CAST(empCode AS UNSIGNED), empCode';
+        $stmt = $db->query($sql);
     }
     $rows = $stmt->fetchAll();
-    // Parse JSON fields
     foreach ($rows as &$row) {
         $row['shiftConfig'] = json_decode($row['shiftConfig'], true);
         $row['holidays'] = json_decode($row['holidays'], true);
+        $row['isActive'] = isset($row['isActive']) ? (int)$row['isActive'] : 1;
     }
     jsonResponse($rows);
 }
@@ -64,13 +71,15 @@ if ($method === 'POST') {
 if ($method === 'PUT' && $id) {
     $body = getJsonBody();
     $now = date('Y-m-d H:i:s.000');
-    $stmt = $db->prepare('UPDATE employees SET empCode = ?, name = ?, shopId = ?, shiftConfig = ?, holidays = ?, updatedAt = ? WHERE id = ?');
+    $isActive = isset($body['isActive']) ? (int)$body['isActive'] : 1;
+    $stmt = $db->prepare('UPDATE employees SET empCode = ?, name = ?, shopId = ?, shiftConfig = ?, holidays = ?, isActive = ?, updatedAt = ? WHERE id = ?');
     $stmt->execute([
         $body['empCode'],
         $body['name'],
         $body['shopId'],
         json_encode($body['shiftConfig'], JSON_UNESCAPED_UNICODE),
         json_encode($body['holidays'] ?? new \stdClass(), JSON_UNESCAPED_UNICODE),
+        $isActive,
         $now,
         $id,
     ]);
@@ -80,6 +89,7 @@ if ($method === 'PUT' && $id) {
     $row = $stmt->fetch();
     $row['shiftConfig'] = json_decode($row['shiftConfig'], true);
     $row['holidays'] = json_decode($row['holidays'], true);
+    $row['isActive'] = (int)$row['isActive'];
     jsonResponse($row);
 }
 

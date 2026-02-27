@@ -71,4 +71,26 @@ const api = {
     updateShop: (id, data) =>
         fetchJSON(`${API_BASE}/shops.php?id=${id}`, { method: 'PUT', body: JSON.stringify(data) }),
 
+    // Bonus
+    getBonusRecords: (params = {}) => {
+        const sp = new URLSearchParams();
+        if (params.shopId) sp.set('shopId', params.shopId);
+        if (params.year) sp.set('year', params.year.toString());
+        return fetchJSON(`${API_BASE}/bonus.php?${sp.toString()}`);
+    },
+    createBonusRecord: (data) =>
+        fetchJSON(`${API_BASE}/bonus.php`, { method: 'POST', body: JSON.stringify(data) }),
+    updateBonusRecord: (id, data) =>
+        fetchJSON(`${API_BASE}/bonus.php?id=${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    deleteBonusRecord: (id) =>
+        fetchJSON(`${API_BASE}/bonus.php?id=${id}`, { method: 'DELETE' }),
+
+    // Behavior Logs
+    addBehavior: (data) =>
+        fetchJSON(`${API_BASE}/behavior.php`, { method: 'POST', body: JSON.stringify(data) }),
+    updateBehavior: (id, data) =>
+        fetchJSON(`${API_BASE}/behavior.php?id=${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    deleteBehavior: (id) =>
+        fetchJSON(`${API_BASE}/behavior.php?id=${id}`, { method: 'DELETE' }),
+
 };
