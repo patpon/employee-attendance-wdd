@@ -52,7 +52,7 @@ const WDD_SHIFT_CONFIGS = {
     },
     // ตำแหน่ง เสิร์ฟ - กะ 2 - วันจันทร์-ศุกร์ (ไม่มีพัก)
     'เสิร์ฟ_2_weekday': {
-        shift1Start: "06:00", shift1End: "14:00", shift1Deadline: "10:00",
+        shift1Start: "06:00", shift1End: "14:00", shift1Deadline: "12:00",
         shift2Start: null, shift2End: null,
         shift3Start: null, shift3End: null,
         shift4Start: "20:00", shift4End: "03:00",
