@@ -409,7 +409,7 @@ async function processImport() {
                         const baseConfig = employee.shiftConfig;
                         const deductRate = (baseConfig && baseConfig.deductionPerMinute) || 1;
                         const firstForConfig = (day.scan1 && timeToMinutes(day.scan1) >= 180) ? day.scan1 : null;
-                        const wddConfig = getWddDayConfig(employee.name, day.date, firstForConfig);
+                        const wddConfig = getWddDayConfig(employee.name, day.date, firstForConfig, employee);
                         const config = wddConfig || baseConfig;
                         if (day.scan2 && config.breakOutFixed && config.breakInDeadline) {
                             const fixedOutMin = timeToMinutes(config.breakOutFixed);
@@ -591,7 +591,7 @@ async function reprocessAttendance() {
                         const baseConfig = employee.shiftConfig;
                         const deductRate = (baseConfig && baseConfig.deductionPerMinute) || 1;
                         const firstForConfig = (day.scan1 && timeToMinutes(day.scan1) >= 180) ? day.scan1 : null;
-                        const wddConfig = getWddDayConfig(employee.name, day.date, firstForConfig);
+                        const wddConfig = getWddDayConfig(employee.name, day.date, firstForConfig, employee);
                         const config = wddConfig || baseConfig;
                         if (day.scan2 && config.breakOutFixed && config.breakInDeadline) {
                             const fixedOutMin = timeToMinutes(config.breakOutFixed);
@@ -826,7 +826,7 @@ function updateScanTime(rIdx, dayIdx, scanNum, value) {
     // Use scan1 as firstScanTime only if it's not a cross-midnight scan (00:00-02:59)
     const rawFirst = day.scan1;
     const firstForConfig = (rawFirst && timeToMinutes(rawFirst) >= 180) ? rawFirst : null;
-    const wddConfig = getWddDayConfig(record.empName, day.date, firstForConfig);
+    const wddConfig = getWddDayConfig(record.empName, day.date, firstForConfig, null);
     const config = wddConfig || baseConfig;
 
     // Recalculate break deadline
@@ -935,7 +935,30 @@ async function editEmployeeName(employeeId, currentName) {
         const emps = await api.getEmployees();
         const emp = emps.find(e => e.id === employeeId);
         if (!emp) { alert('ไม่พบพนักงาน'); return; }
-        await api.updateEmployee(employeeId, { ...emp, name: newName.trim() });
+
+        // ตรวจว่าตำแหน่งเปลี่ยนหรือไม่
+        const oldPosition = _extractPosition(currentName);
+        const newPosition = _extractPosition(newName.trim());
+        let updateData = { ...emp, name: newName.trim() };
+
+        if (oldPosition && newPosition && oldPosition !== newPosition) {
+            const changeDate = prompt(
+                `ตำแหน่งเปลี่ยนจาก "${oldPosition}" → "${newPosition}"\n\n` +
+                `กรอกวันที่เริ่มตำแหน่งใหม่ (YYYY-MM-DD)\n` +
+                `เช่น 2026-02-15\n\n` +
+                `(ข้อมูลก่อนวันนี้จะใช้ config "${oldPosition}" เดิม)`
+            );
+            if (changeDate && /^\d{4}-\d{2}-\d{2}$/.test(changeDate.trim())) {
+                updateData.positionHistory = {
+                    previousName: currentName,
+                    changeDate: changeDate.trim(),
+                };
+            } else if (changeDate !== null) {
+                alert('รูปแบบวันที่ไม่ถูกต้อง กรุณาใช้ YYYY-MM-DD\nระบบจะบันทึกชื่อใหม่โดยไม่มีประวัติตำแหน่ง');
+            }
+        }
+
+        await api.updateEmployee(employeeId, updateData);
         // Update attendance records in memory
         for (const rec of attendanceRecords) {
             if (rec.employeeId === employeeId) rec.empName = newName.trim();
@@ -947,7 +970,10 @@ async function editEmployeeName(employeeId, currentName) {
             }
         }
         renderAttList();
-        alert('แก้ไขชื่อสำเร็จ!');
+        const msg = updateData.positionHistory
+            ? `แก้ไขชื่อสำเร็จ!\n\nบันทึกประวัติ: ${oldPosition} → ${newPosition}\nเริ่มตำแหน่งใหม่: ${updateData.positionHistory.changeDate}\n\nกรุณากดประมวลผลใหม่เพื่อคำนวณเวลาตามตำแหน่งที่ถูกต้อง`
+            : 'แก้ไขชื่อสำเร็จ!';
+        alert(msg);
     } catch (err) { alert('เกิดข้อผิดพลาด: ' + err.message); }
 }
 

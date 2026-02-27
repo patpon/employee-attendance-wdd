@@ -352,7 +352,7 @@ function processEmployeeAttendance(employee, scans, shopName, month, year) {
 // ============================================
 function processEmployeeAttendanceWDD(employee, scans, shopName, month, year) {
     // If employee has no WDD position in name, use standard processing
-    if (!detectWddPosition(employee.name)) {
+    if (!detectWddPosition(employee.name, employee, null)) {
         return processEmployeeAttendance(employee, scans, shopName, month, year);
     }
 
@@ -383,7 +383,7 @@ function processEmployeeAttendanceWDD(employee, scans, shopName, month, year) {
                 const candidateScans = nonMidnightScans.length > 0 ? nonMidnightScans : dayScans;
                 const sortedScans = [...candidateScans].sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
                 let firstScanTime = sortedScans[0] ? sortedScans[0].time.substring(0, 5) : null;
-                const dayConfig = getWddDayConfig(employee.name, date, firstScanTime) || baseConfig;
+                const dayConfig = getWddDayConfig(employee.name, date, firstScanTime, employee) || baseConfig;
                 const shifts = assignScansToShifts(dayScans, dayConfig);
                 tempRecords.push({
                     date,
@@ -446,7 +446,7 @@ function processEmployeeAttendanceWDD(employee, scans, shopName, month, year) {
         // ถ้าใช่ แสดงว่าพนักงานลืม scan เข้า → ควรเป็นกะ 1
         // ยกเว้น: ถ้ากะ 2 ไม่มีพัก และ scan ตกใน shift1 window ของกะ 2 → ใช้กะ 2
         if (firstScanTime && timeToMinutes(firstScanTime) >= timeToMinutes('11:00')) {
-            const position = detectWddPosition(employee.name);
+            const position = detectWddPosition(employee.name, employee, date);
             const weekend = isWeekend(date);
             // ดึง config ทั้งกะ 1 และกะ 2
             let shift1Key, shift2Key;
@@ -484,7 +484,7 @@ function processEmployeeAttendanceWDD(employee, scans, shopName, month, year) {
         }
 
         // Get per-day WDD config based on position + shift + day type
-        const dayConfig = getWddDayConfig(employee.name, date, firstScanTime) || baseConfig;
+        const dayConfig = getWddDayConfig(employee.name, date, firstScanTime, employee) || baseConfig;
         const shiftNum = detectWddShiftNum(firstScanTime);
 
         // Use pattern learning to improve scan classification
@@ -496,7 +496,7 @@ function processEmployeeAttendanceWDD(employee, scans, shopName, month, year) {
         // ถ้าออกพัก 14:55 → ใกล้กะ2 (15:00) → DL=16:30
         let breakShiftNum = shiftNum; // กะที่ใช้คำนวณ break DL
         if (shifts.scan2 && !shifts.autoScan2) {
-            const position = detectWddPosition(employee.name);
+            const position = detectWddPosition(employee.name, employee, date);
             if (position === 'ครัว' || position === 'เดิน') {
                 const otherShiftNum = shiftNum === 1 ? 2 : 1;
                 const otherKey = `${position}_${otherShiftNum}`;

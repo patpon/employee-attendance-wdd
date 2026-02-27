@@ -113,12 +113,24 @@ const WDD_SHIFT_CONFIGS = {
 };
 
 // Detect WDD position from employee name (last word)
-function detectWddPosition(empName) {
-    if (!empName) return null;
-    const name = empName.trim();
-    if (name.endsWith('ครัว')) return 'ครัว';
-    if (name.endsWith('เดิน')) return 'เดิน';
-    if (name.endsWith('เสิร์ฟ')) return 'เสิร์ฟ';
+// ถ้ามี employee object + date → ตรวจ positionHistory เพื่อรองรับการเปลี่ยนตำแหน่งกลางเดือน
+function detectWddPosition(empName, employee = null, isoDate = null) {
+    // ถ้ามี positionHistory และวันที่ < วันที่เปลี่ยนตำแหน่ง → ใช้ชื่อเดิม
+    if (employee && employee.positionHistory && isoDate) {
+        const history = employee.positionHistory;
+        if (history.changeDate && history.previousName && isoDate < history.changeDate) {
+            return _extractPosition(history.previousName);
+        }
+    }
+    return _extractPosition(empName);
+}
+
+function _extractPosition(name) {
+    if (!name) return null;
+    const n = name.trim();
+    if (n.endsWith('ครัว')) return 'ครัว';
+    if (n.endsWith('เดิน')) return 'เดิน';
+    if (n.endsWith('เสิร์ฟ')) return 'เสิร์ฟ';
     return null;
 }
 
@@ -141,8 +153,9 @@ function isWeekend(isoDate) {
 }
 
 // Get WDD shift config for a specific employee and date, given first scan time
-function getWddDayConfig(empName, isoDate, firstScanTime) {
-    const position = detectWddPosition(empName);
+// employee object (optional) ใช้สำหรับตรวจ positionHistory
+function getWddDayConfig(empName, isoDate, firstScanTime, employee = null) {
+    const position = detectWddPosition(empName, employee, isoDate);
     if (!position) return null;
     const shiftNum = detectWddShiftNum(firstScanTime);
     const weekend = isWeekend(isoDate);
