@@ -33,7 +33,7 @@ let currentUser = { username: '', displayName: '', role: 'viewer' };
 
 // Role-based menu permissions
 const ROLE_PERMISSIONS = {
-    admin:    ['dashboard', 'import', 'attendance', 'reports', 'settings'],
+    admin:    ['dashboard', 'import', 'attendance', 'reports', 'bonus', 'settings'],
     importer: ['import'],
 };
 
