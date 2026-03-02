@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>เข้าสู่ระบบ - ระบบลงเวลาพนักงาน WDD</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="login-page">
+        <div style="width:100%;max-width:400px;">
+            <div class="login-card">
+                <div style="text-align:center;margin-bottom:32px;">
+                    <div class="login-logo">&#128197;</div>
+                    <h1 style="font-size:24px;font-weight:700;color:#1f2937;">ระบบลงเวลาพนักงาน WDD</h1>
+                    <p style="color:#9ca3af;font-size:14px;margin-top:4px;">Employee Attendance System</p>
+                </div>
+                <form id="loginForm" style="display:flex;flex-direction:column;gap:20px;">
+                    <div>
+                        <label style="display:block;font-size:14px;font-weight:500;color:#374151;margin-bottom:6px;">ชื่อผู้ใช้</label>
+                        <input type="text" id="username" class="input-field" placeholder="กรอกชื่อผู้ใช้" required autofocus>
+                    </div>
+                    <div>
+                        <label style="display:block;font-size:14px;font-weight:500;color:#374151;margin-bottom:6px;">รหัสผ่าน</label>
+                        <div class="password-wrapper">
+                            <input type="password" id="password" class="input-field" placeholder="กรอกรหัสผ่าน" required style="padding-right:40px;">
+                            <button type="button" class="password-toggle" onclick="togglePassword()">&#128065;</button>
+                        </div>
+                    </div>
+                    <div id="loginError" class="alert alert-error hidden"></div>
+                    <button type="submit" id="loginBtn" class="btn-primary" style="width:100%;justify-content:center;padding:12px;font-size:16px;">
+                        &#128274; เข้าสู่ระบบ
+                    </button>
+                </form>
+            </div>
+            <p style="text-align:center;color:rgba(255,255,255,0.5);font-size:12px;margin-top:24px;">
+                &copy; 2026 Employee Attendance System
+            </p>
+        </div>
+    </div>
+    <script>
+        function togglePassword() {
+            const input = document.getElementById('password');
+            input.type = input.type === 'password' ? 'text' : 'password';
+        }
+
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const errorEl = document.getElementById('loginError');
+            const btn = document.getElementById('loginBtn');
+            errorEl.classList.add('hidden');
+            btn.disabled = true;
+            btn.innerHTML = '<div class="spinner"></div> กำลังเข้าสู่ระบบ...';
+
+            try {
+                const res = await fetch('api/auth.php?action=login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username: document.getElementById('username').value,
+                        password: document.getElementById('password').value,
+                    }),
+                });
+                const data = await res.json();
+                if (data.success) {
+                    window.location.href = 'index.html';
+                } else {
+                    errorEl.textContent = data.message || 'เข้าสู่ระบบไม่สำเร็จ';
+                    errorEl.classList.remove('hidden');
+                }
+            } catch {
+                errorEl.textContent = 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้';
+                errorEl.classList.remove('hidden');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '&#128274; เข้าสู่ระบบ';
+            }
+        });
+
+        // Check if already logged in
+        fetch('api/auth.php?action=check').then(r => r.json()).then(d => {
+            if (d.authenticated) window.location.href = 'index.html';
+        }).catch(() => {});
+    </script>
+</body>
+</html>
