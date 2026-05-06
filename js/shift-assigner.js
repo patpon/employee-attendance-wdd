@@ -383,6 +383,26 @@ function processEmployeeAttendanceWDD(employee, scans, shopName, month, year) {
                 const candidateScans = nonMidnightScans.length > 0 ? nonMidnightScans : dayScans;
                 const sortedScans = [...candidateScans].sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
                 let firstScanTime = sortedScans[0] ? sortedScans[0].time.substring(0, 5) : null;
+                // Reverse smart detection (same logic as main loop)
+                if (firstScanTime && timeToMinutes(firstScanTime) < timeToMinutes('11:00') && dayScans.length >= 3) {
+                    const pos = detectWddPosition(employee.name, employee, date);
+                    let _s1Cfg = null, _s2Cfg = null;
+                    if (pos === 'ครัว' || pos === 'เดิน') {
+                        _s1Cfg = WDD_SHIFT_CONFIGS[`${pos}_1`];
+                        _s2Cfg = WDD_SHIFT_CONFIGS[`${pos}_2`];
+                    } else if (pos === 'เสิร์ฟ') {
+                        const _dt = isWeekend(date) ? 'weekend' : 'weekday';
+                        _s1Cfg = WDD_SHIFT_CONFIGS[`เสิร์ฟ_1_${_dt}`];
+                        _s2Cfg = WDD_SHIFT_CONFIGS[`เสิร์ฟ_2_${_dt}`];
+                    }
+                    if (_s1Cfg && _s2Cfg && _s1Cfg.shift2Start && _s2Cfg.shift2Start && _s2Cfg.hasBreak !== false) {
+                        const _s1s = timeToMinutes(_s1Cfg.shift2Start), _s1e = timeToMinutes(_s1Cfg.shift2End);
+                        const _s2s = timeToMinutes(_s2Cfg.shift2Start), _s2e = timeToMinutes(_s2Cfg.shift2End);
+                        const _hasS1 = dayScans.some(s => { const m = timeToMinutes(s.time); return m >= _s1s && m <= _s1e; });
+                        const _hasS2 = dayScans.some(s => { const m = timeToMinutes(s.time); return m >= _s2s && m <= _s2e; });
+                        if (!_hasS1 && _hasS2) firstScanTime = '12:00';
+                    }
+                }
                 const dayConfig = getWddDayConfig(employee.name, date, firstScanTime, employee) || baseConfig;
                 const shifts = assignScansToShifts(dayScans, dayConfig);
                 tempRecords.push({
@@ -479,6 +499,42 @@ function processEmployeeAttendanceWDD(employee, scans, shopName, month, year) {
                 if (scanMin >= s2Start && scanMin <= s2End) {
                     // scan ตกใน shift2 window ของกะ 1 → ใช้กะ 1
                     firstScanTime = null; // null = default กะ 1
+                }
+            }
+        }
+
+        // Reverse smart shift detection: firstScan < 11:00 แต่ scans บ่งชี้ว่าเป็นกะ 2
+        // เงื่อนไข: ไม่มี scan ใน break-out window ของกะ 1 แต่มี scan ใน break-out window ของกะ 2 เท่านั้น
+        // → พนักงานเข้าเร็ว (ก่อน 11:00) แต่จริงๆ ทำงานกะ 2 ระบบควรใช้ config กะ 2
+        if (firstScanTime && timeToMinutes(firstScanTime) < timeToMinutes('11:00') && dayScans.length >= 3) {
+            const position = detectWddPosition(employee.name, employee, date);
+            let s1Cfg = null, s2Cfg = null;
+            if (position === 'ครัว' || position === 'เดิน') {
+                s1Cfg = WDD_SHIFT_CONFIGS[`${position}_1`];
+                s2Cfg = WDD_SHIFT_CONFIGS[`${position}_2`];
+            } else if (position === 'เสิร์ฟ') {
+                const dayType = isWeekend(date) ? 'weekend' : 'weekday';
+                s1Cfg = WDD_SHIFT_CONFIGS[`เสิร์ฟ_1_${dayType}`];
+                s2Cfg = WDD_SHIFT_CONFIGS[`เสิร์ฟ_2_${dayType}`];
+            }
+            if (s1Cfg && s2Cfg && s1Cfg.shift2Start && s2Cfg.shift2Start && s2Cfg.hasBreak !== false) {
+                const s1BoStart = timeToMinutes(s1Cfg.shift2Start);
+                const s1BoEnd   = timeToMinutes(s1Cfg.shift2End);
+                const s2BoStart = timeToMinutes(s2Cfg.shift2Start);
+                const s2BoEnd   = timeToMinutes(s2Cfg.shift2End);
+                // ตรวจว่ามี scan ใน break-out window ของกะ 1 หรือไม่ (ไม่นับ first scan ซึ่ง < 11:00)
+                const hasShift1BreakOut = dayScans.some(s => {
+                    const m = timeToMinutes(s.time);
+                    return m >= s1BoStart && m <= s1BoEnd;
+                });
+                // ตรวจว่ามี scan ใน break-out window ของกะ 2 หรือไม่
+                const hasShift2BreakOut = dayScans.some(s => {
+                    const m = timeToMinutes(s.time);
+                    return m >= s2BoStart && m <= s2BoEnd;
+                });
+                // ถ้าไม่มีใน กะ1 แต่มีใน กะ2 → override เป็นกะ 2
+                if (!hasShift1BreakOut && hasShift2BreakOut) {
+                    firstScanTime = '12:00'; // ค่าตัวแทน >= 11:00 เพื่อให้ detectWddShiftNum คืน 2
                 }
             }
         }
