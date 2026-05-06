@@ -2,6 +2,29 @@
 // Shift Assigner - Process scans into attendance
 // ============================================
 
+// ตัด scan ซ้ำ: ถ้า 2 scan ห่างกัน < thresholdMinutes → เก็บครั้งแรก ตัดครั้งที่ 2 ทิ้ง
+function deduplicateScans(scans, thresholdMinutes = 5) {
+    if (!scans || scans.length <= 1) return scans;
+    const sorted = [...scans].sort((a, b) => {
+        let ma = timeToMinutes(a.time);
+        let mb = timeToMinutes(b.time);
+        if (ma < 180) ma += 1440; // cross-midnight normalization
+        if (mb < 180) mb += 1440;
+        return ma - mb;
+    });
+    const result = [sorted[0]];
+    for (let i = 1; i < sorted.length; i++) {
+        let prevMin = timeToMinutes(result[result.length - 1].time);
+        let curMin  = timeToMinutes(sorted[i].time);
+        if (prevMin < 180) prevMin += 1440;
+        if (curMin  < 180) curMin  += 1440;
+        if (curMin - prevMin >= thresholdMinutes) {
+            result.push(sorted[i]);
+        }
+    }
+    return result;
+}
+
 function groupScansByDate(scans) {
     const groups = {};
     for (const scan of scans) {
@@ -76,6 +99,8 @@ function assignScansToShifts(scans, config, employeePattern = null) {
     if (!scans || scans.length === 0) {
         return { scan1: null, scan2: null, scan3: null, scan4: null, breakRound: null, breakDeadline: null };
     }
+
+    scans = deduplicateScans(scans);
 
     const usedIndices = new Set();
 
