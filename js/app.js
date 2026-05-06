@@ -1241,13 +1241,22 @@ function printSummaryReport() {
     printWindow.document.close();
 }
 
-function buildReportHTML(record) {
+function buildReportHTML(record, reportLabel) {
     const shopName = DEFAULT_SHOP_NAME;
     const buddhistYear = ceToBuddhist(record.year);
     const days = record.days || [];
     const totalLate1Min = days.reduce((s, d) => s + (d.late1Minutes || 0), 0);
     const totalLate2Min = days.reduce((s, d) => s + (d.late2Minutes || 0), 0);
     const fmt = (t) => (t ? t.substring(0, 5) : '-');
+    const now = new Date();
+    const buddhistNow = (now.getFullYear() + 543 - 2500).toString().padStart(2,'0') + '/' +
+                        (now.getMonth()+1).toString().padStart(2,'0') + '/' +
+                        (now.getFullYear() + 543);
+    const timeNow = now.getHours().toString().padStart(2,'0') + ':' +
+                    now.getMinutes().toString().padStart(2,'0');
+    const deductClass = record.totalDeduction > 0 ? 'red' : '';
+    const absentClass = record.absent > 0 ? 'red' : '';
+
     const rows = days.map((day, idx) => {
         const cls = day.isHoliday ? 'holiday' : day.isAbsent ? 'absent' : '';
         return '<tr class="' + cls + '">' +
@@ -1266,20 +1275,23 @@ function buildReportHTML(record) {
             '<td>' + (day.late2Baht > 0 ? day.late2Baht : 0) + '</td>' +
         '</tr>';
     }).join('');
-    const deductClass = record.totalDeduction > 0 ? 'red' : '';
-    const absentClass = record.absent > 0 ? 'red' : '';
+
     return '' +
+        '<div class="rpt-top">' +
+            '<span>' + buddhistNow + ' ' + timeNow + '</span>' +
+            '<span>' + (reportLabel || '') + '</span>' +
+        '</div>' +
         '<div class="rpt-header">' +
             '<h2>ตารางสรุปการทำงานรายบุคคล</h2>' +
             '<p>ร้าน: ' + shopName + ' | ประจำเดือน: ' + THAI_MONTHS[record.month - 1] + ' ' + buddhistYear + '</p>' +
         '</div>' +
         '<div class="rpt-info">' +
-            '<span><b>รหัส:</b> ' + record.empCode + '</span>' +
-            '<span><b>ชื่อ:</b> ' + record.empName + '</span>' +
-            '<span><b>วันทำงาน:</b> ' + record.workingDays + ' วัน</span>' +
-            '<span><b>วันหยุด:</b> ' + record.holidays + ' วัน</span>' +
-            '<span><b>ขาด:</b> <span class="' + absentClass + '">' + record.absent + ' วัน</span></span>' +
-            '<span><b>รวมหัก:</b> <span class="' + deductClass + '">' + record.totalDeduction + ' บาท</span></span>' +
+            '<div><span class="lbl">รหัส:</span> ' + record.empCode + '</div>' +
+            '<div><span class="lbl">ชื่อ:</span> ' + record.empName + '</div>' +
+            '<div><span class="lbl">วันทำงาน:</span> ' + record.workingDays + ' วัน</div>' +
+            '<div><span class="lbl">วันหยุด:</span> ' + record.holidays + ' วัน</div>' +
+            '<div><span class="lbl">ขาด:</span> <span class="' + absentClass + '">' + record.absent + ' วัน</span></div>' +
+            '<div><span class="lbl">รวมหัก:</span> <span class="' + deductClass + '">' + record.totalDeduction + ' บาท</span></div>' +
         '</div>' +
         '<table>' +
             '<colgroup>' +
@@ -1303,36 +1315,65 @@ function buildReportHTML(record) {
                 '<td>' + record.totalLate2Baht + '</td>' +
             '</tr></tfoot>' +
         '</table>' +
-        '<div class="rpt-footer-line">' +
+        '<div class="rpt-bottom">' +
             '<span>รวมหักทั้งหมด: <b class="' + deductClass + '">' + record.totalDeduction + ' บาท</b></span>' +
-            '<span>พิมพ์เมื่อ: ' + new Date().toLocaleString('th-TH') + '</span>' +
+            '<span>พิมพ์เมื่อ: ' + now.toLocaleString('th-TH') + '</span>' +
         '</div>';
 }
 
 function getPrintStyles() {
     return `
         @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap');
-        @page { size: A4 portrait; margin: 8mm 10mm 8mm 10mm; }
+        @page { size: A4 portrait; margin: 10mm 12mm 10mm 12mm; }
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Sarabun', sans-serif; font-size: 9.5px; background: white; color: #111; }
-        .rpt-header { text-align: center; margin-bottom: 6px; }
-        .rpt-header h2 { font-size: 14px; font-weight: 700; color: #1e3a5f; }
-        .rpt-header p  { font-size: 9.5px; color: #555; margin-top: 2px; }
-        .rpt-info { display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 5px 8px;
-                    background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 4px;
-                    margin-bottom: 7px; font-size: 9.5px; }
+        body { font-family: 'Sarabun', sans-serif; font-size: 11px; background: white; color: #111; }
+
+        /* ── Top bar ── */
+        .rpt-top {
+            display: flex; justify-content: space-between; align-items: center;
+            font-size: 9px; color: #888; margin-bottom: 6px;
+        }
+
+        /* ── Header ── */
+        .rpt-header { text-align: center; margin-bottom: 10px; }
+        .rpt-header h2 { font-size: 16px; font-weight: 700; color: #1e3a5f; }
+        .rpt-header p  { font-size: 10px; color: #555; margin-top: 3px; }
+
+        /* ── Info grid ── */
+        .rpt-info {
+            display: grid; grid-template-columns: 1fr 1fr;
+            gap: 4px 24px; padding: 8px 12px;
+            border: 1px solid #cbd5e1; border-radius: 4px;
+            background: #f8fafc; margin-bottom: 10px;
+            font-size: 11px;
+        }
+        .rpt-info .lbl { font-weight: 700; }
         .rpt-info .red { color: #dc2626; font-weight: 700; }
-        table { width: 100%; border-collapse: collapse; font-size: 9px; }
-        th, td { border: 1px solid #94a3b8; padding: 2.5px 3px; text-align: center; vertical-align: middle; }
-        th { background: #1e3a5f; color: white; font-weight: 600; font-size: 8.5px; }
-        .holiday  { background: #fef3c7; }
-        .absent   { background: #fee2e2; }
-        tfoot td  { background: #e2e8f0; font-weight: 700; }
+
+        /* ── Table ── */
+        table { width: 100%; border-collapse: collapse; font-size: 10.5px; }
+        th, td {
+            border: 1px solid #64748b;
+            padding: 3px 4px;
+            text-align: center;
+            vertical-align: middle;
+        }
+        th { background: #1e3a5f; color: white; font-weight: 700; font-size: 10px; }
+        tbody tr:nth-child(even):not(.holiday):not(.absent) { background: #f9fafb; }
+        .holiday { background: #fef3c7; }
+        .absent  { background: #fee2e2; }
+        tfoot td { background: #e2e8f0; font-weight: 700; }
         .td-right { text-align: right; padding-right: 6px; }
-        .td-left  { text-align: left; padding-left: 4px; font-size: 8px; }
+        .td-left  { text-align: left;  padding-left: 4px; }
         .red { color: #dc2626; font-weight: 700; }
-        .rpt-footer-line { display: flex; justify-content: space-between; margin-top: 5px;
-                           font-size: 8.5px; color: #555; }
+
+        /* ── Bottom line ── */
+        .rpt-bottom {
+            display: flex; justify-content: space-between;
+            margin-top: 6px; font-size: 10px; color: #555;
+        }
+
+        /* ── Page break ── */
         .page-emp { page-break-after: always; }
         .page-emp:last-child { page-break-after: auto; }
         @media print {
@@ -1349,7 +1390,7 @@ function printReport(id) {
     if (!printWindow) return;
     const html = '<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8"><title>รายงาน ' +
         record.empName + '</title><style>' + getPrintStyles() +
-        '<\/style><\/head><body>' + buildReportHTML(record) +
+        '<\/style><\/head><body>' + buildReportHTML(record, 'รายงาน เดี่ยว') +
         '<script>window.onload=function(){window.print();}<\/script><\/body><\/html>';
     printWindow.document.write(html);
     printWindow.document.close();
@@ -1360,7 +1401,7 @@ function printAllReports() {
     if (sorted.length === 0) { alert('ไม่มีข้อมูลให้พิมพ์'); return; }
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
-    const pages = sorted.map(r => '<div class="page-emp">' + buildReportHTML(r) + '</div>').join('');
+    const pages = sorted.map(r => '<div class="page-emp">' + buildReportHTML(r, 'รายงาน ทั้งหมด') + '</div>').join('');
     const html = '<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8"><title>รายงานทั้งหมด</title><style>' +
         getPrintStyles() + '<\/style><\/head><body>' + pages +
         '<script>window.onload=function(){window.print();}<\/script><\/body><\/html>';
