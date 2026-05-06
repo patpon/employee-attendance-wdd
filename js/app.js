@@ -1244,43 +1244,101 @@ function printSummaryReport() {
 function buildReportHTML(record) {
     const shopName = DEFAULT_SHOP_NAME;
     const buddhistYear = ceToBuddhist(record.year);
-    return `
-        <div class="header"><h2>ตารางสรุปการทำงานรายบุคคล</h2><p>ร้าน: ${shopName} | ประจำเดือน: ${THAI_MONTHS[record.month - 1]} ${buddhistYear}</p></div>
-        <div class="info-grid">
-            <div><span class="label">ชื่อ:</span> ${record.empName}</div><div><span class="label">รหัส:</span> ${record.empCode}</div>
-            <div><span class="label">วันทำงาน:</span> ${record.workingDays} วัน</div><div><span class="label">วันหยุด:</span> ${record.holidays} วัน</div>
-            <div><span class="label">ขาด:</span> ${record.absent} วัน</div><div><span class="label">รวมหัก:</span> ${record.totalDeduction} บาท</div>
-        </div>
-        <table><thead><tr><th>#</th><th>วันที่</th><th>วัน</th><th>หยุด</th><th>เข้า</th><th>พักออก</th><th>พักเข้า</th><th>เลิก</th><th>เข้าสาย</th><th>หัก(บาท)</th><th>รอบพัก</th><th>สายพัก</th><th>หัก(บาท)</th></tr></thead>
-        <tbody>${record.days.map((day, idx) => {
-            return '<tr class="' + (day.isHoliday ? 'holiday' : day.isAbsent ? 'absent' : '') + '">' +
-            '<td>' + (idx + 1) + '</td><td>' + formatDate(day.date) + '</td><td>' + day.dayOfWeek + '</td><td>' + (day.isHoliday ? 'YES' : '') + '</td>' +
-            '<td>' + (day.isHoliday ? '-' : (day.autoScan1 ? '-' : formatTime(day.scan1))) + '</td><td>' + (day.isHoliday ? '-' : (day.autoScan2 ? '-' : formatTime(day.scan2))) + '</td>' +
-            '<td>' + (day.isHoliday ? '-' : (day.autoScan3 ? '-' : formatTime(day.scan3))) + '</td><td>' + (day.isHoliday ? '-' : formatTime(day.scan4)) + '</td>' +
-            '<td>' + (day.late1Minutes > 0 ? minutesToTime(day.late1Minutes) : '') + '</td><td>' + (day.late1Baht > 0 ? day.late1Baht : 0) + '</td>' +
-            '<td>' + (day.isHoliday ? '-' : (day.breakRound || '')) + '</td>' +
-            '<td>' + (day.late2Minutes > 0 ? minutesToTime(day.late2Minutes) : '') + '</td><td>' + (day.late2Baht > 0 ? day.late2Baht : 0) + '</td>' +
-            '</tr>';
-        }).join('')}</tbody>
-        <tfoot><tr style="background:#f3f4f6;font-weight:bold;"><td colspan="8" class="text-right">รวม</td>
-            <td>${minutesToTime(record.days.reduce((s, d) => s + d.late1Minutes, 0))}</td><td>${record.totalLate1Baht}</td><td></td>
-            <td>${minutesToTime(record.days.reduce((s, d) => s + d.late2Minutes, 0))}</td><td>${record.totalLate2Baht}</td>
-        </tr></tfoot></table>
-        <div class="summary"><p>รวมหักทั้งหมด: ${record.totalDeduction} บาท</p></div>`;
+    const days = record.days || [];
+    const totalLate1Min = days.reduce((s, d) => s + (d.late1Minutes || 0), 0);
+    const totalLate2Min = days.reduce((s, d) => s + (d.late2Minutes || 0), 0);
+    const fmt = (t) => (t ? t.substring(0, 5) : '-');
+    const rows = days.map((day, idx) => {
+        const cls = day.isHoliday ? 'holiday' : day.isAbsent ? 'absent' : '';
+        return '<tr class="' + cls + '">' +
+            '<td>' + (idx + 1) + '</td>' +
+            '<td>' + formatDate(day.date) + '</td>' +
+            '<td>' + day.dayOfWeek + '</td>' +
+            '<td>' + (day.isHoliday ? 'YES' : '') + '</td>' +
+            '<td>' + (day.isHoliday ? '-' : (day.autoScan1 ? '-' : fmt(day.scan1))) + '</td>' +
+            '<td>' + (day.isHoliday ? '-' : (day.autoScan2 ? '-' : fmt(day.scan2))) + '</td>' +
+            '<td>' + (day.isHoliday ? '-' : (day.autoScan3 ? '-' : fmt(day.scan3))) + '</td>' +
+            '<td>' + (day.isHoliday ? '-' : fmt(day.scan4)) + '</td>' +
+            '<td>' + (day.late1Minutes > 0 ? minutesToTime(day.late1Minutes) : '') + '</td>' +
+            '<td>' + (day.late1Baht > 0 ? day.late1Baht : 0) + '</td>' +
+            '<td class="td-left">' + (day.isHoliday ? '-' : (day.breakRound || '')) + '</td>' +
+            '<td>' + (day.late2Minutes > 0 ? minutesToTime(day.late2Minutes) : '') + '</td>' +
+            '<td>' + (day.late2Baht > 0 ? day.late2Baht : 0) + '</td>' +
+        '</tr>';
+    }).join('');
+    const deductClass = record.totalDeduction > 0 ? 'red' : '';
+    const absentClass = record.absent > 0 ? 'red' : '';
+    return '' +
+        '<div class="rpt-header">' +
+            '<h2>ตารางสรุปการทำงานรายบุคคล</h2>' +
+            '<p>ร้าน: ' + shopName + ' | ประจำเดือน: ' + THAI_MONTHS[record.month - 1] + ' ' + buddhistYear + '</p>' +
+        '</div>' +
+        '<div class="rpt-info">' +
+            '<span><b>รหัส:</b> ' + record.empCode + '</span>' +
+            '<span><b>ชื่อ:</b> ' + record.empName + '</span>' +
+            '<span><b>วันทำงาน:</b> ' + record.workingDays + ' วัน</span>' +
+            '<span><b>วันหยุด:</b> ' + record.holidays + ' วัน</span>' +
+            '<span><b>ขาด:</b> <span class="' + absentClass + '">' + record.absent + ' วัน</span></span>' +
+            '<span><b>รวมหัก:</b> <span class="' + deductClass + '">' + record.totalDeduction + ' บาท</span></span>' +
+        '</div>' +
+        '<table>' +
+            '<colgroup>' +
+                '<col style="width:4%"><col style="width:11%"><col style="width:6%"><col style="width:5%">' +
+                '<col style="width:7%"><col style="width:7%"><col style="width:7%"><col style="width:7%">' +
+                '<col style="width:7%"><col style="width:5%"><col style="width:14%">' +
+                '<col style="width:7%"><col style="width:5%">' +
+            '</colgroup>' +
+            '<thead><tr>' +
+                '<th>#</th><th>วันที่</th><th>วัน</th><th>หยุด</th>' +
+                '<th>เข้า</th><th>พักออก</th><th>พักเข้า</th><th>เลิก</th>' +
+                '<th>เข้าสาย</th><th>บาท</th><th>รอบพัก</th><th>สายพัก</th><th>บาท</th>' +
+            '</tr></thead>' +
+            '<tbody>' + rows + '</tbody>' +
+            '<tfoot><tr>' +
+                '<td colspan="8" class="td-right">รวม</td>' +
+                '<td>' + minutesToTime(totalLate1Min) + '</td>' +
+                '<td>' + record.totalLate1Baht + '</td>' +
+                '<td></td>' +
+                '<td>' + minutesToTime(totalLate2Min) + '</td>' +
+                '<td>' + record.totalLate2Baht + '</td>' +
+            '</tr></tfoot>' +
+        '</table>' +
+        '<div class="rpt-footer-line">' +
+            '<span>รวมหักทั้งหมด: <b class="' + deductClass + '">' + record.totalDeduction + ' บาท</b></span>' +
+            '<span>พิมพ์เมื่อ: ' + new Date().toLocaleString('th-TH') + '</span>' +
+        '</div>';
 }
 
 function getPrintStyles() {
     return `
-        @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700&display=swap');
-        *{margin:0;padding:0;box-sizing:border-box;}body{font-family:'Sarabun',sans-serif;font-size:11px;padding:20px;}
-        .header{text-align:center;margin-bottom:15px;}.header h2{font-size:16px;margin-bottom:5px;}
-        .info-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:10px;font-size:12px;}.info-grid .label{font-weight:600;}
-        table{width:100%;border-collapse:collapse;font-size:10px;}th,td{border:1px solid #333;padding:3px 5px;text-align:center;}
-        th{background:#2563eb;color:white;font-weight:600;}.holiday{background:#fef3c7;}.absent{background:#fee2e2;}
-        .text-right{text-align:right;}.summary{margin-top:10px;font-size:12px;}.footer{margin-top:15px;font-size:10px;color:#666;}
-        .page-break{page-break-after:always;margin-bottom:20px;}
-        .page-break:last-child{page-break-after:auto;}
-        @media print{body{padding:10px;}.page-break{page-break-after:always;}.page-break:last-child{page-break-after:auto;}}
+        @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap');
+        @page { size: A4 portrait; margin: 8mm 10mm 8mm 10mm; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Sarabun', sans-serif; font-size: 9.5px; background: white; color: #111; }
+        .rpt-header { text-align: center; margin-bottom: 6px; }
+        .rpt-header h2 { font-size: 14px; font-weight: 700; color: #1e3a5f; }
+        .rpt-header p  { font-size: 9.5px; color: #555; margin-top: 2px; }
+        .rpt-info { display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 5px 8px;
+                    background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 4px;
+                    margin-bottom: 7px; font-size: 9.5px; }
+        .rpt-info .red { color: #dc2626; font-weight: 700; }
+        table { width: 100%; border-collapse: collapse; font-size: 9px; }
+        th, td { border: 1px solid #94a3b8; padding: 2.5px 3px; text-align: center; vertical-align: middle; }
+        th { background: #1e3a5f; color: white; font-weight: 600; font-size: 8.5px; }
+        .holiday  { background: #fef3c7; }
+        .absent   { background: #fee2e2; }
+        tfoot td  { background: #e2e8f0; font-weight: 700; }
+        .td-right { text-align: right; padding-right: 6px; }
+        .td-left  { text-align: left; padding-left: 4px; font-size: 8px; }
+        .red { color: #dc2626; font-weight: 700; }
+        .rpt-footer-line { display: flex; justify-content: space-between; margin-top: 5px;
+                           font-size: 8.5px; color: #555; }
+        .page-emp { page-break-after: always; }
+        .page-emp:last-child { page-break-after: auto; }
+        @media print {
+            .page-emp { page-break-after: always; }
+            .page-emp:last-child { page-break-after: auto; }
+        }
     `;
 }
 
@@ -1289,11 +1347,11 @@ function printReport(id) {
     if (!record) return;
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
-    printWindow.document.write(`<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8"><title>รายงาน ${record.empName}</title>
-        <style>${getPrintStyles()}</style></head><body>
-        ${buildReportHTML(record)}
-        <div class="footer"><p>พิมพ์เมื่อ: ${new Date().toLocaleString('th-TH')}</p></div>
-        <script>window.onload=function(){window.print();}<\/script></body></html>`);
+    const html = '<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8"><title>รายงาน ' +
+        record.empName + '</title><style>' + getPrintStyles() +
+        '<\/style><\/head><body>' + buildReportHTML(record) +
+        '<script>window.onload=function(){window.print();}<\/script><\/body><\/html>';
+    printWindow.document.write(html);
     printWindow.document.close();
 }
 
@@ -1302,11 +1360,11 @@ function printAllReports() {
     if (sorted.length === 0) { alert('ไม่มีข้อมูลให้พิมพ์'); return; }
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
-    const pages = sorted.map(record => `<div class="page-break">${buildReportHTML(record)}</div>`).join('');
-    printWindow.document.write(`<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8"><title>รายงานทั้งหมด</title>
-        <style>${getPrintStyles()}</style></head><body>
-        ${pages}
-        <script>window.onload=function(){window.print();}<\/script></body></html>`);
+    const pages = sorted.map(r => '<div class="page-emp">' + buildReportHTML(r) + '</div>').join('');
+    const html = '<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8"><title>รายงานทั้งหมด</title><style>' +
+        getPrintStyles() + '<\/style><\/head><body>' + pages +
+        '<script>window.onload=function(){window.print();}<\/script><\/body><\/html>';
+    printWindow.document.write(html);
     printWindow.document.close();
 }
 
