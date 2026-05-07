@@ -27,8 +27,8 @@ async function renderBonus(container) {
                         <input type="text" id="bonusSearchInput" class="input-field" placeholder="🔍 ชื่อ หรือ รหัสพนักงาน..." value="${bonusSearch}" oninput="bonusSearch=this.value;renderBonusContent()" style="width:100%;">
                     </div>
                     <div style="display:flex;gap:8px;align-items:flex-end;">
-                        <button id="bonusSortAsc" onclick="setBonusSort('asc')" style="padding:8px 14px;border-radius:8px;font-size:13px;cursor:pointer;border:1px solid ${bonusSort === 'asc' ? '#3b82f6' : '#d1d5db'};background:${bonusSort === 'asc' ? '#eff6ff' : 'white'};color:${bonusSort === 'asc' ? '#2563eb' : '#374151'};font-weight:${bonusSort === 'asc' ? '600' : '400'};">A→Z</button>
-                        <button id="bonusSortDesc" onclick="setBonusSort('desc')" style="padding:8px 14px;border-radius:8px;font-size:13px;cursor:pointer;border:1px solid ${bonusSort === 'desc' ? '#3b82f6' : '#d1d5db'};background:${bonusSort === 'desc' ? '#eff6ff' : 'white'};color:${bonusSort === 'desc' ? '#2563eb' : '#374151'};font-weight:${bonusSort === 'desc' ? '600' : '400'};">Z→A</button>
+                        <button id="bonusSortAsc" onclick="setBonusSort('asc')" style="padding:8px 14px;border-radius:8px;font-size:13px;cursor:pointer;border:1px solid ${bonusSort==='asc'?'#3b82f6':'#d1d5db'};background:${bonusSort==='asc'?'#eff6ff':'white'};color:${bonusSort==='asc'?'#2563eb':'#374151'};font-weight:${bonusSort==='asc'?'600':'400'};">A→Z</button>
+                        <button id="bonusSortDesc" onclick="setBonusSort('desc')" style="padding:8px 14px;border-radius:8px;font-size:13px;cursor:pointer;border:1px solid ${bonusSort==='desc'?'#3b82f6':'#d1d5db'};background:${bonusSort==='desc'?'#eff6ff':'white'};color:${bonusSort==='desc'?'#2563eb':'#374151'};font-weight:${bonusSort==='desc'?'600':'400'};">Z→A</button>
                     </div>
                     <div style="display:flex;gap:8px;">
                         <button class="btn-primary" onclick="loadBonusPage()">🔄 โหลดข้อมูล</button>
@@ -79,18 +79,18 @@ async function initBonusAllEmployees() {
 
 function setBonusSort(dir) {
     bonusSort = dir;
-    const asc = document.getElementById('bonusSortAsc');
+    const asc  = document.getElementById('bonusSortAsc');
     const desc = document.getElementById('bonusSortDesc');
     if (asc) {
-        asc.style.border = dir === 'asc' ? '1px solid #3b82f6' : '1px solid #d1d5db';
-        asc.style.background = dir === 'asc' ? '#eff6ff' : 'white';
-        asc.style.color = dir === 'asc' ? '#2563eb' : '#374151';
-        asc.style.fontWeight = dir === 'asc' ? '600' : '400';
+        asc.style.border      = dir === 'asc' ? '1px solid #3b82f6' : '1px solid #d1d5db';
+        asc.style.background  = dir === 'asc' ? '#eff6ff' : 'white';
+        asc.style.color       = dir === 'asc' ? '#2563eb' : '#374151';
+        asc.style.fontWeight  = dir === 'asc' ? '600' : '400';
     }
     if (desc) {
-        desc.style.border = dir === 'desc' ? '1px solid #3b82f6' : '1px solid #d1d5db';
+        desc.style.border     = dir === 'desc' ? '1px solid #3b82f6' : '1px solid #d1d5db';
         desc.style.background = dir === 'desc' ? '#eff6ff' : 'white';
-        desc.style.color = dir === 'desc' ? '#2563eb' : '#374151';
+        desc.style.color      = dir === 'desc' ? '#2563eb' : '#374151';
         desc.style.fontWeight = dir === 'desc' ? '600' : '400';
     }
     renderBonusContent();
@@ -106,15 +106,10 @@ function renderBonusContent() {
         </div>`;
         return;
     }
-    // กรองพนักงานที่ลาออก (isActive === 0) ออก
-    const activeRecords = bonusRecords.filter(r => {
-        const emp = bonusEmployees.find(e => e.id === r.employeeId);
-        return !emp || emp.isActive === 1 || emp.isActive === undefined;
-    });
     const q = bonusSearch.trim().toLowerCase();
     let filtered = q
-        ? activeRecords.filter(r => r.empName.toLowerCase().includes(q) || r.empCode.toLowerCase().includes(q))
-        : [...activeRecords];
+        ? bonusRecords.filter(r => r.empName.toLowerCase().includes(q) || r.empCode.toLowerCase().includes(q))
+        : [...bonusRecords];
     filtered.sort((a, b) => {
         const cmp = a.empCode.localeCompare(b.empCode, undefined, { numeric: true, sensitivity: 'base' });
         return bonusSort === 'asc' ? cmp : -cmp;
@@ -134,7 +129,7 @@ function renderBonusCard(rec, idx) {
     const st = statusMap[rec.bonusStatus] || statusMap.pending;
     const att = rec.attendanceSummary;
     const goodLogs = (rec.behaviorLogs || []).filter(l => l.type === 'good');
-    const badLogs = (rec.behaviorLogs || []).filter(l => l.type === 'bad');
+    const badLogs  = (rec.behaviorLogs || []).filter(l => l.type === 'bad');
 
     return `
     <div class="card mb-6" id="bonusCard_${rec.id}">
@@ -209,14 +204,14 @@ function renderBonusCard(rec, idx) {
                 <div>
                     <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px;">สถานะ</label>
                     <select id="bonusSt_${rec.id}" class="input-field" style="width:140px;">
-                        <option value="pending"  ${rec.bonusStatus === 'pending' ? 'selected' : ''}>🟡 รอพิจารณา</option>
-                        <option value="approved" ${rec.bonusStatus === 'approved' ? 'selected' : ''}>🟢 อนุมัติแล้ว</option>
-                        <option value="rejected" ${rec.bonusStatus === 'rejected' ? 'selected' : ''}>🔴 ไม่อนุมัติ</option>
+                        <option value="pending"  ${rec.bonusStatus==='pending'  ? 'selected':''}>🟡 รอพิจารณา</option>
+                        <option value="approved" ${rec.bonusStatus==='approved' ? 'selected':''}>🟢 อนุมัติแล้ว</option>
+                        <option value="rejected" ${rec.bonusStatus==='rejected' ? 'selected':''}>🔴 ไม่อนุมัติ</option>
                     </select>
                 </div>
                 <div>
                     <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px;">สรุปการพิจารณา</label>
-                    <input type="text" id="bonusNote_${rec.id}" value="${escHtml(rec.bonusNote || '')}" placeholder="สรุปเหตุผลการพิจารณา..." class="input-field" style="width:100%;">
+                    <input type="text" id="bonusNote_${rec.id}" value="${escHtml(rec.bonusNote||'')}" placeholder="สรุปเหตุผลการพิจารณา..." class="input-field" style="width:100%;">
                 </div>
             </div>
             <div style="margin-top:12px;display:flex;justify-content:flex-end;">
@@ -248,7 +243,7 @@ function showAddBehaviorForm(recId, type) {
     const today = new Date().toISOString().slice(0, 10);
     formEl.style.display = 'block';
     formEl.innerHTML = `
-        <div style="margin-top:12px;padding:14px;background:${type === 'good' ? '#f0fdf4' : '#fff7ed'};border:1px solid ${type === 'good' ? '#bbf7d0' : '#fed7aa'};border-radius:10px;">
+        <div style="margin-top:12px;padding:14px;background:${type==='good'?'#f0fdf4':'#fff7ed'};border:1px solid ${type==='good'?'#bbf7d0':'#fed7aa'};border-radius:10px;">
             <div style="font-size:13px;font-weight:600;color:${color};margin-bottom:10px;">+ เพิ่ม${typeLabel}</div>
             <div style="display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:center;">
                 <div>
@@ -262,7 +257,7 @@ function showAddBehaviorForm(recId, type) {
             </div>
             <div style="margin-top:10px;display:flex;gap:8px;justify-content:flex-end;">
                 <button onclick="document.getElementById('behaviorForm_${recId}').style.display='none'" style="font-size:12px;padding:5px 14px;border:1px solid #d1d5db;background:white;color:#6b7280;border-radius:6px;cursor:pointer;">ยกเลิก</button>
-                <button onclick="saveBehaviorLog('${recId}','${type}')" style="font-size:12px;padding:5px 14px;border:none;background:${type === 'good' ? '#16a34a' : '#ea580c'};color:white;border-radius:6px;cursor:pointer;font-weight:600;">บันทึก</button>
+                <button onclick="saveBehaviorLog('${recId}','${type}')" style="font-size:12px;padding:5px 14px;border:none;background:${type==='good'?'#16a34a':'#ea580c'};color:white;border-radius:6px;cursor:pointer;font-weight:600;">บันทึก</button>
             </div>
         </div>`;
     document.getElementById(`blogDesc_${recId}`).focus();
@@ -317,12 +312,12 @@ async function loadBonusAttendance(recId, employeeId) {
                 const records = await api.getAttendance({ shopId: DEFAULT_SHOP_ID, month: m, year: bonusYear });
                 const empRec = records.find(r => r.employeeId === employeeId);
                 if (empRec) {
-                    workingDays += empRec.workingDays || 0;
-                    holidays += empRec.holidays || 0;
-                    absent += empRec.absent || 0;
+                    workingDays   += empRec.workingDays    || 0;
+                    holidays      += empRec.holidays       || 0;
+                    absent        += empRec.absent         || 0;
                     totalDeduction += empRec.totalDeduction || 0;
-                    late1Baht += empRec.totalLate1Baht || 0;
-                    late2Baht += empRec.totalLate2Baht || 0;
+                    late1Baht     += empRec.totalLate1Baht || 0;
+                    late2Baht     += empRec.totalLate2Baht || 0;
                     if (empRec.days) {
                         for (const d of empRec.days) {
                             late1Minutes += d.late1Minutes || 0;
@@ -330,7 +325,7 @@ async function loadBonusAttendance(recId, employeeId) {
                         }
                     }
                 }
-            } catch { }
+            } catch {}
         }
         const summary = { workingDays, holidays, absent, late1Minutes, late1Baht, late2Minutes, late2Baht, totalDeduction };
         await api.updateBonusRecord(recId, { attendanceSummary: summary });
@@ -343,7 +338,7 @@ async function loadBonusAttendance(recId, employeeId) {
 
 async function saveBonusRecord(recId) {
     const amount = parseFloat(document.getElementById(`bonusAmt_${recId}`).value) || 0;
-    const status = document.getElementById(`bonusSt_${recId}`).value;
+    const status  = document.getElementById(`bonusSt_${recId}`).value;
     const note = document.getElementById(`bonusNote_${recId}`).value.trim();
     try {
         await api.updateBonusRecord(recId, { bonusAmount: amount, bonusStatus: status, bonusNote: note });
@@ -358,19 +353,13 @@ async function saveBonusRecord(recId) {
 function showBonusSummaryReport() {
     if (bonusRecords.length === 0) { alert('ไม่มีข้อมูลโบนัส — กรุณาโหลดข้อมูลก่อน'); return; }
 
-    // กรองเฉพาะพนักงานที่ยังทำงานอยู่
-    const activeBonusRecords = bonusRecords.filter(r => {
-        const emp = bonusEmployees.find(e => e.id === r.employeeId);
-        return !emp || emp.isActive === 1 || emp.isActive === undefined;
-    });
-
     const statusMap = { pending: '🟡 รอพิจารณา', approved: '🟢 อนุมัติแล้ว', rejected: '🔴 ไม่อนุมัติ' };
-    const approved = activeBonusRecords.filter(r => r.bonusStatus === 'approved');
-    const pending = activeBonusRecords.filter(r => r.bonusStatus === 'pending');
-    const rejected = activeBonusRecords.filter(r => r.bonusStatus === 'rejected');
+    const approved  = bonusRecords.filter(r => r.bonusStatus === 'approved');
+    const pending   = bonusRecords.filter(r => r.bonusStatus === 'pending');
+    const rejected  = bonusRecords.filter(r => r.bonusStatus === 'rejected');
     const totalBudget = approved.reduce((s, r) => s + (parseFloat(r.bonusAmount) || 0), 0);
 
-    const sorted = [...activeBonusRecords].sort((a, b) => (parseFloat(b.bonusAmount) || 0) - (parseFloat(a.bonusAmount) || 0));
+    const sorted = [...bonusRecords].sort((a, b) => (parseFloat(b.bonusAmount)||0) - (parseFloat(a.bonusAmount)||0));
 
     const rows = sorted.map((r, i) => {
         const amt = parseFloat(r.bonusAmount) || 0;
@@ -378,17 +367,17 @@ function showBonusSummaryReport() {
         const stLabel = statusMap[r.bonusStatus] || '🟡 รอพิจารณา';
         const rowBg = r.bonusStatus === 'approved' ? '#f0fdf4' : r.bonusStatus === 'rejected' ? '#fff1f2' : '';
         return `<tr style="background:${rowBg};">
-            <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:center;font-weight:600;color:#6b7280;">${i + 1}</td>
+            <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:center;font-weight:600;color:#6b7280;">${i+1}</td>
             <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;">
                 <div style="font-weight:600;color:#111827;">${escHtml(r.empName)}</div>
                 <div style="font-size:11px;color:#9ca3af;">รหัส ${escHtml(r.empCode)}</div>
             </td>
-            <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:center;">${att ? att.workingDays + ' วัน' : '-'}</td>
-            <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:center;color:${att && att.absent > 0 ? '#ef4444' : '#10b981'};font-weight:600;">${att ? att.absent + ' วัน' : '-'}</td>
-            <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:center;color:${att && att.totalDeduction > 0 ? '#f59e0b' : '#10b981'};">${att ? att.totalDeduction.toLocaleString() + '฿' : '-'}</td>
+            <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:center;">${att ? att.workingDays+' วัน' : '-'}</td>
+            <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:center;color:${att&&att.absent>0?'#ef4444':'#10b981'};font-weight:600;">${att ? att.absent+' วัน' : '-'}</td>
+            <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:center;color:${att&&att.totalDeduction>0?'#f59e0b':'#10b981'};">${att ? att.totalDeduction.toLocaleString()+'฿' : '-'}</td>
             <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:center;">${stLabel}</td>
-            <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700;font-size:15px;color:${amt > 0 ? '#059669' : '#6b7280'};">${amt > 0 ? amt.toLocaleString() + ' ฿' : '-'}</td>
-            <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;font-size:12px;color:#6b7280;">${escHtml(r.bonusNote || '-')}</td>
+            <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700;font-size:15px;color:${amt>0?'#059669':'#6b7280'};">${amt > 0 ? amt.toLocaleString()+' ฿' : '-'}</td>
+            <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;font-size:12px;color:#6b7280;">${escHtml(r.bonusNote||'-')}</td>
         </tr>`;
     }).join('');
 
