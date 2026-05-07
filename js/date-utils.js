@@ -8,6 +8,18 @@ const THAI_MONTHS = [
     "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"
 ];
 
+// ============================================
+// WDD Shop constants
+// ============================================
+// เกณฑ์เวลา first-scan ที่แบ่ง กะ 1 กับ กะ 2 (ใช้เป็น prior ใน scoreShiftConfig)
+const WDD_SHIFT_BOUNDARY_TIME = "11:00";
+
+// กะ 4 (กลางคืน) เหมือนกันทุก config → spread เข้าทุก entry แทนเขียนซ้ำ
+const NIGHT_SHIFT = { shift4Start: "20:00", shift4End: "03:00" };
+
+// ตำแหน่งที่รองรับ - เรียงคำยาวก่อน เพื่อให้ endsWith fallback match คำที่จำเพาะกว่า
+const WDD_POSITIONS = ['เสิร์ฟ', 'ครัว', 'เดิน'];
+
 const DEFAULT_SHIFT_CONFIG = {
     shift1Start: "06:00",
     shift1End: "11:30",
@@ -16,8 +28,7 @@ const DEFAULT_SHIFT_CONFIG = {
     shift2End: "15:00",
     shift3Start: "13:00",
     shift3End: "17:00",
-    shift4Start: "20:00",
-    shift4End: "03:00",
+    ...NIGHT_SHIFT,
     hasBreak: true,
     breakOutFixed: "13:30",
     breakInDeadline: "15:00",
@@ -31,11 +42,12 @@ const DEFAULT_SHIFT_CONFIG = {
 // ============================================
 const WDD_SHIFT_CONFIGS = {
     // ตำแหน่ง เสิร์ฟ - กะ 1 - วันจันทร์-ศุกร์
+    // shift2Start ปิดช่องว่าง (เดิม 12:00 → 11:30) เพื่อจับสแกน 11:30-12:00
     'เสิร์ฟ_1_weekday': {
         shift1Start: "06:00", shift1End: "11:30", shift1Deadline: "10:00",
-        shift2Start: "12:00", shift2End: "15:00",
+        shift2Start: "11:30", shift2End: "15:00",
         shift3Start: "13:00", shift3End: "17:00",
-        shift4Start: "20:00", shift4End: "03:00",
+        ...NIGHT_SHIFT,
         hasBreak: true,
         breakOutFixed: "13:30", breakInDeadline: "15:30",
         deductionPerMinute: 1,
@@ -45,7 +57,7 @@ const WDD_SHIFT_CONFIGS = {
         shift1Start: "06:00", shift1End: "11:30", shift1Deadline: "10:00",
         shift2Start: "11:30", shift2End: "14:00",
         shift3Start: "13:00", shift3End: "16:00",
-        shift4Start: "20:00", shift4End: "03:00",
+        ...NIGHT_SHIFT,
         hasBreak: true,
         breakOutFixed: "13:00", breakInDeadline: "14:30",
         deductionPerMinute: 1,
@@ -55,7 +67,7 @@ const WDD_SHIFT_CONFIGS = {
         shift1Start: "06:00", shift1End: "14:00", shift1Deadline: "12:00",
         shift2Start: null, shift2End: null,
         shift3Start: null, shift3End: null,
-        shift4Start: "20:00", shift4End: "03:00",
+        ...NIGHT_SHIFT,
         hasBreak: false,
         breakOutFixed: null, breakInDeadline: null,
         deductionPerMinute: 1,
@@ -65,7 +77,7 @@ const WDD_SHIFT_CONFIGS = {
         shift1Start: "06:00", shift1End: "12:00", shift1Deadline: "12:00",
         shift2Start: "13:00", shift2End: "16:00",
         shift3Start: "14:00", shift3End: "18:00",
-        shift4Start: "20:00", shift4End: "03:00",
+        ...NIGHT_SHIFT,
         hasBreak: true,
         breakOutFixed: "14:30", breakInDeadline: "16:00",
         deductionPerMinute: 1,
@@ -75,7 +87,7 @@ const WDD_SHIFT_CONFIGS = {
         shift1Start: "06:00", shift1End: "11:30", shift1Deadline: "10:00",
         shift2Start: "11:30", shift2End: "14:00",
         shift3Start: "13:00", shift3End: "16:00",
-        shift4Start: "20:00", shift4End: "03:00",
+        ...NIGHT_SHIFT,
         hasBreak: true,
         breakOutFixed: "13:00", breakInDeadline: "14:30",
         deductionPerMinute: 1,
@@ -85,7 +97,7 @@ const WDD_SHIFT_CONFIGS = {
         shift1Start: "06:00", shift1End: "12:00", shift1Deadline: "12:00",
         shift2Start: "13:00", shift2End: "16:00",
         shift3Start: "14:00", shift3End: "18:00",
-        shift4Start: "20:00", shift4End: "03:00",
+        ...NIGHT_SHIFT,
         hasBreak: true,
         breakOutFixed: "14:30", breakInDeadline: "16:00",
         deductionPerMinute: 1,
@@ -95,7 +107,7 @@ const WDD_SHIFT_CONFIGS = {
         shift1Start: "06:00", shift1End: "11:30", shift1Deadline: "10:00",
         shift2Start: "12:00", shift2End: "15:00",
         shift3Start: "13:30", shift3End: "17:00",
-        shift4Start: "20:00", shift4End: "03:00",
+        ...NIGHT_SHIFT,
         hasBreak: true,
         breakOutFixed: "13:30", breakInDeadline: "15:00",
         deductionPerMinute: 1,
@@ -105,7 +117,7 @@ const WDD_SHIFT_CONFIGS = {
         shift1Start: "06:00", shift1End: "12:00", shift1Deadline: "12:00",
         shift2Start: "13:30", shift2End: "16:30",
         shift3Start: "15:00", shift3End: "18:30",
-        shift4Start: "20:00", shift4End: "03:00",
+        ...NIGHT_SHIFT,
         hasBreak: true,
         breakOutFixed: "15:00", breakInDeadline: "16:30",
         deductionPerMinute: 1,
@@ -125,20 +137,46 @@ function detectWddPosition(empName, employee = null, isoDate = null) {
     return _extractPosition(empName);
 }
 
+// Normalize ชื่อพนักงานก่อนตรวจตำแหน่ง:
+// - ลบ zero-width chars (ZWSP/ZWNJ/ZWJ/BOM) และ NBSP ที่อาจติดมาจาก Excel/copy-paste
+// - ยุบ whitespace หลายตัวเป็นช่องเดียว แล้ว trim
+function _normalizeName(name) {
+    if (!name) return '';
+    return name
+        .replace(/[​-‍﻿]/g, '')
+        .replace(/ /g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
 function _extractPosition(name) {
-    if (!name) return null;
-    const n = name.trim();
-    if (n.endsWith('ครัว')) return 'ครัว';
-    if (n.endsWith('เดิน')) return 'เดิน';
-    if (n.endsWith('เสิร์ฟ')) return 'เสิร์ฟ';
+    const normalized = _normalizeName(name);
+    if (!normalized) return null;
+
+    // Primary: คำสุดท้าย (split ด้วย space) ตรงกับตำแหน่งแบบ exact word
+    // เช่น "นาย ก เสิร์ฟ" → ["นาย","ก","เสิร์ฟ"] → "เสิร์ฟ"
+    const tokens = normalized.split(' ');
+    const lastToken = tokens[tokens.length - 1];
+    if (WDD_POSITIONS.includes(lastToken)) return lastToken;
+
+    // Fallback: endsWith สำหรับชื่อที่ไม่มี space คั่น (เช่นพิมพ์ติดกัน)
+    // แต่ต้องมี word-boundary ก่อนตำแหน่ง (space/digit/start) เพื่อกัน false match
+    // เช่น "เครื่องครัว" ต้องไม่ match "ครัว" เพราะอักษรก่อนหน้าเป็นตัวอักษรไทย
+    for (const pos of WDD_POSITIONS) {
+        if (normalized.endsWith(pos)) {
+            const prevChar = normalized.charAt(normalized.length - pos.length - 1);
+            if (!prevChar || /[\s\d]/.test(prevChar)) return pos;
+        }
+    }
     return null;
 }
 
-// Detect shift number from first scan time (< 11:00 = กะ 1, >= 11:00 = กะ 2)
+// Detect shift number from first scan time (< WDD_SHIFT_BOUNDARY_TIME = กะ 1, >= = กะ 2)
+// ถ้าไม่มี firstScanTime → default กะ 1 (ใช้กับ label fallback)
 function detectWddShiftNum(firstScanTime) {
     if (!firstScanTime) return 1;
     const min = timeToMinutes(firstScanTime);
-    return min < timeToMinutes('11:00') ? 1 : 2;
+    return min < timeToMinutes(WDD_SHIFT_BOUNDARY_TIME) ? 1 : 2;
 }
 
 // Global public holidays array - loaded from DB on app init

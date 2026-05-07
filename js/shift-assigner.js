@@ -122,8 +122,9 @@ function scoreShiftConfig(dayScans, config, shiftNum) {
         .sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
     if (sorted.length > 0) {
         const firstMin = timeToMinutes(sorted[0].time);
-        if (shiftNum === 1 && firstMin < timeToMinutes('11:00')) score += 3;
-        if (shiftNum === 2 && firstMin >= timeToMinutes('11:00')) score += 3;
+        const boundaryMin = timeToMinutes(WDD_SHIFT_BOUNDARY_TIME);
+        if (shiftNum === 1 && firstMin < boundaryMin) score += 3;
+        if (shiftNum === 2 && firstMin >= boundaryMin) score += 3;
     }
 
     // scan1 window match
