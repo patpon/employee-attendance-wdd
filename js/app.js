@@ -281,16 +281,15 @@ function handleImportFile(file) {
     document.getElementById('importPreview').classList.add('hidden');
 
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
         try {
             const data = parseExcelFile(e.target.result);
             const deduped = deduplicateScans(data.scans);
             importParsedData = data;
             importDedupedScans = deduped;
             showImportStatus('info', `พบ ${data.employees.length} พนักงาน, ${data.scans.length} รายการ (หลัง dedup: ${deduped.length})`);
-            showImportPreview();
-            // Auto-process after showing preview
-            setTimeout(() => processImport(), 300);
+            await showImportPreview();
+            await processImport();
         } catch (err) {
             showImportStatus('error', 'ไม่สามารถอ่านไฟล์ได้: ' + err.message);
         }
@@ -348,8 +347,7 @@ async function processImport() {
     if (!importParsedData) return;
 
     const btn = document.getElementById('processImportBtn');
-    btn.disabled = true;
-    btn.innerHTML = '<div class="spinner"></div> กำลังประมวลผล...';
+    if (btn) { btn.disabled = true; btn.innerHTML = '<div class="spinner"></div> กำลังประมวลผล...'; }
 
     try {
         let currentEmployees = await api.getEmployees();
@@ -454,8 +452,7 @@ async function processImport() {
     } catch (err) {
         showImportStatus('error', 'เกิดข้อผิดพลาด: ' + err.message);
     }
-    btn.disabled = false;
-    btn.innerHTML = '&#10004; ประมวลผลและบันทึก';
+    if (btn) { btn.disabled = false; btn.innerHTML = '&#10004; ประมวลผลและบันทึก'; }
 }
 
 // ============================================

@@ -94,16 +94,34 @@ function parseExcelFile(arrayBuffer) {
 }
 
 function deduplicateScans(scans) {
-    const result = [];
-    let lastScan = null;
-
+    // Group scans by empCode+date key, then filter duplicates within 5 minutes
+    const DEDUP_MS = 5 * 60 * 1000; // 5 minutes
+    const groups = {};
     for (const scan of scans) {
-        if (lastScan && lastScan.empCode === scan.empCode && lastScan.date === scan.date && Math.abs(scan.timestamp - lastScan.timestamp) < 5000) {
-            continue;
-        }
-        result.push(scan);
-        lastScan = scan;
+        const key = `${scan.empCode}|${scan.date}`;
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(scan);
     }
+
+    const result = [];
+    for (const key of Object.keys(groups)) {
+        const dayScans = groups[key].sort((a, b) => a.timestamp - b.timestamp);
+        result.push(dayScans[0]);
+        for (let i = 1; i < dayScans.length; i++) {
+            const prev = dayScans[i - 1];
+            const curr = dayScans[i];
+            if (Math.abs(curr.timestamp - prev.timestamp) >= DEDUP_MS) {
+                result.push(curr);
+            }
+        }
+    }
+
+    // Re-sort by empCode, date, time
+    result.sort((a, b) => {
+        if (a.empCode !== b.empCode) return a.empCode.localeCompare(b.empCode);
+        if (a.date !== b.date) return a.date.localeCompare(b.date);
+        return a.timestamp - b.timestamp;
+    });
 
     return result;
 }

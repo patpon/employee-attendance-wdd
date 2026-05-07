@@ -95,6 +95,108 @@ function findLastScan(scans, windowStart, windowEnd, usedIndices) {
     return { scan: bestScan, index: bestIndex };
 }
 
+// ============================================
+// Score-based WDD shift config selection
+// Tests both กะ1 and กะ2 against actual scans; picks the best fit.
+// Replaces the manual firstScanTime threshold + smart correction chain.
+//
+// Scoring:
+//   +3  scan falls in shift1 (เข้างาน) window
+//   +3  scan falls in shift2 (พักออก) window  (if config has break)
+//   +2  scan falls in shift3 (พักเข้า) window  (if config has break)
+//   +2  scan falls in shift4 (เลิกงาน) window
+//   +3  first-scan-time matches the expected กะ (< 11:00 → กะ1, >= 11:00 → กะ2)
+//   -2  config expects a break but no scan found anywhere in break range
+//   -1  per non-midnight scan that doesn't fit any window (leftover scans)
+// ============================================
+function scoreShiftConfig(dayScans, config, shiftNum) {
+    if (!config || !dayScans || dayScans.length === 0) return -Infinity;
+
+    const deduped = deduplicateScans([...dayScans]);
+    let score = 0;
+    const usedIndices = new Set();
+
+    // First-scan prior: prefer กะ whose number matches arrival time
+    const nonMidnight = deduped.filter(s => timeToMinutes(s.time) >= 180);
+    const sorted = [...(nonMidnight.length > 0 ? nonMidnight : deduped)]
+        .sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
+    if (sorted.length > 0) {
+        const firstMin = timeToMinutes(sorted[0].time);
+        if (shiftNum === 1 && firstMin < timeToMinutes('11:00')) score += 3;
+        if (shiftNum === 2 && firstMin >= timeToMinutes('11:00')) score += 3;
+    }
+
+    // scan1 window match
+    const r1 = findFirstScan(deduped, config.shift1Start, config.shift1End, usedIndices);
+    if (r1.scan) { score += 3; usedIndices.add(r1.index); }
+
+    // scan2 (พักออก) window match
+    if (config.hasBreak !== false && config.shift2Start) {
+        const r2 = findFirstScan(deduped, config.shift2Start, config.shift2End, usedIndices);
+        if (r2.scan) { score += 3; usedIndices.add(r2.index); }
+    }
+
+    // scan3 (พักเข้า) window match
+    if (config.hasBreak !== false && config.shift3Start) {
+        const r3 = findFirstScan(deduped, config.shift3Start, config.shift3End, usedIndices);
+        if (r3.scan) { score += 2; usedIndices.add(r3.index); }
+    }
+
+    // scan4 (เลิกงาน) window match
+    const r4 = findLastScan(deduped, config.shift4Start, config.shift4End, usedIndices);
+    if (r4.scan) { score += 2; usedIndices.add(r4.index); }
+
+    // Penalty: config expects break but no scan found in entire break range
+    if (config.hasBreak !== false && config.shift2Start && config.shift3End) {
+        const s2 = timeToMinutes(config.shift2Start);
+        const s3e = timeToMinutes(config.shift3End);
+        const hasBreakScan = deduped.some(s => {
+            const m = timeToMinutes(s.time);
+            return m >= s2 && m <= s3e;
+        });
+        if (!hasBreakScan) score -= 2;
+    }
+
+    // Penalty: non-midnight scans that don't fit any window (leftover = wrong config)
+    for (let i = 0; i < deduped.length; i++) {
+        if (!usedIndices.has(i) && timeToMinutes(deduped[i].time) >= 180) score -= 1;
+    }
+
+    return score;
+}
+
+// Returns { config, shiftNum } for the best-fitting WDD shift config for a given day.
+// weekday/weekend is determined from the date; กะ1 vs กะ2 from scan pattern.
+function selectBestShiftConfig(dayScans, position, date) {
+    if (!position || !dayScans || dayScans.length === 0) return null;
+
+    const weekend = isWeekend(date);
+    let candidates;
+
+    if (position === 'เดิน' || position === 'ครัว') {
+        candidates = [
+            { shiftNum: 1, config: WDD_SHIFT_CONFIGS[`${position}_1`] },
+            { shiftNum: 2, config: WDD_SHIFT_CONFIGS[`${position}_2`] },
+        ];
+    } else if (position === 'เสิร์ฟ') {
+        const dayType = weekend ? 'weekend' : 'weekday';
+        candidates = [
+            { shiftNum: 1, config: WDD_SHIFT_CONFIGS[`เสิร์ฟ_1_${dayType}`] },
+            { shiftNum: 2, config: WDD_SHIFT_CONFIGS[`เสิร์ฟ_2_${dayType}`] },
+        ];
+    } else {
+        return null;
+    }
+
+    let best = candidates[0];
+    let bestScore = -Infinity;
+    for (const cand of candidates) {
+        const s = scoreShiftConfig(dayScans, cand.config, cand.shiftNum);
+        if (s > bestScore) { bestScore = s; best = cand; }
+    }
+    return best;
+}
+
 function assignScansToShifts(scans, config, employeePattern = null) {
     if (!scans || scans.length === 0) {
         return { scan1: null, scan2: null, scan3: null, scan4: null, breakRound: null, breakDeadline: null };
@@ -368,15 +470,13 @@ function processEmployeeAttendance(employee, scans, shopName, month, year) {
 
 // ============================================
 // WDD-specific attendance processor
-// Detects shift config per-day based on:
-//   - Employee name suffix (position: ครัว/เดิน/เสิร์ฟ)
-//   - First scan time (< 11:00 = กะ 1, >= 11:00 = กะ 2)
-//   - Day of week (weekday/weekend for เสิร์ฟ only)
-//   - Pattern learning from historical data
+// Detects shift config per-day using score-based selection (selectBestShiftConfig):
+//   - weekday/weekend determined from date (เสิร์ฟ only)
+//   - กะ1 vs กะ2 determined by scoring all scans against each candidate config
+//   - เดิน/ครัว: no weekday/weekend split
 // Falls back to processEmployeeAttendance() for non-WDD positions
 // ============================================
 function processEmployeeAttendanceWDD(employee, scans, shopName, month, year) {
-    // If employee has no WDD position in name, use standard processing
     if (!detectWddPosition(employee.name, employee, null)) {
         return processEmployeeAttendance(employee, scans, shopName, month, year);
     }
@@ -391,63 +491,25 @@ function processEmployeeAttendanceWDD(employee, scans, shopName, month, year) {
     const days = [];
     let totalHolidays = 0, totalAbsent = 0, totalLeave = 0, totalWorkingDays = 0;
     let totalLate1 = 0, totalLate2 = 0;
-    
-    // First pass: analyze employee pattern from all available data
-    // Build temporary records for pattern analysis
+
+    // First pass: build pattern from all working days using score-based config
     const tempRecords = [];
     for (const date of allDates) {
         const dayScans = scansByDate[date] || [];
-        if (dayScans.length > 0 && !holidayDates.includes(date)) {
-            // Get base shifts without pattern first
-            const dayDate = new Date(date);
-            const dayOfWeek = THAI_DAYS[dayDate.getDay()];
-            const isHoliday = holidayDates.includes(date) && dayScans.length === 0;
-            if (!isHoliday) {
-                // Quick shift detection
-                const nonMidnightScans = dayScans.filter(s => timeToMinutes(s.time) >= 180);
-                const candidateScans = nonMidnightScans.length > 0 ? nonMidnightScans : dayScans;
-                const sortedScans = [...candidateScans].sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
-                let firstScanTime = sortedScans[0] ? sortedScans[0].time.substring(0, 5) : null;
-                // Reverse smart detection (same logic as main loop)
-                if (firstScanTime && timeToMinutes(firstScanTime) < timeToMinutes('11:00') && dayScans.length >= 3) {
-                    const pos = detectWddPosition(employee.name, employee, date);
-                    let _s1Cfg = null, _s2Cfg = null;
-                    if (pos === 'ครัว' || pos === 'เดิน') {
-                        _s1Cfg = WDD_SHIFT_CONFIGS[`${pos}_1`];
-                        _s2Cfg = WDD_SHIFT_CONFIGS[`${pos}_2`];
-                    } else if (pos === 'เสิร์ฟ') {
-                        const _dt = isWeekend(date) ? 'weekend' : 'weekday';
-                        _s1Cfg = WDD_SHIFT_CONFIGS[`เสิร์ฟ_1_${_dt}`];
-                        _s2Cfg = WDD_SHIFT_CONFIGS[`เสิร์ฟ_2_${_dt}`];
-                    }
-                    if (_s1Cfg && _s2Cfg && _s1Cfg.shift2Start && _s2Cfg.shift2Start && _s2Cfg.hasBreak !== false) {
-                        const _s1s = timeToMinutes(_s1Cfg.shift2Start), _s1e = timeToMinutes(_s1Cfg.shift2End);
-                        const _s2s = timeToMinutes(_s2Cfg.shift2Start), _s2e = timeToMinutes(_s2Cfg.shift2End);
-                        const _hasS1 = dayScans.some(s => { const m = timeToMinutes(s.time); return m >= _s1s && m <= _s1e; });
-                        const _hasS2 = dayScans.some(s => { const m = timeToMinutes(s.time); return m >= _s2s && m <= _s2e; });
-                        if (!_hasS1 && _hasS2) firstScanTime = '12:00';
-                    }
-                }
-                const dayConfig = getWddDayConfig(employee.name, date, firstScanTime, employee) || baseConfig;
-                const shifts = assignScansToShifts(dayScans, dayConfig);
-                tempRecords.push({
-                    date,
-                    scan1: shifts.scan1,
-                    scan2: shifts.scan2,
-                    scan3: shifts.scan3,
-                    scan4: shifts.scan4,
-                    autoScan1: shifts.autoScan1 || false,
-                    autoScan2: shifts.autoScan2 || false,
-                    autoScan3: shifts.autoScan3 || false,
-                    isHoliday: false,
-                    isAbsent: !shifts.scan1 && !shifts.scan4
-                });
-            }
-        }
+        if (dayScans.length === 0 || holidayDates.includes(date)) continue;
+        const pos = detectWddPosition(employee.name, employee, date);
+        const sel = selectBestShiftConfig(dayScans, pos, date);
+        const dayCfg = (sel && sel.config) || baseConfig;
+        const shifts = assignScansToShifts(dayScans, dayCfg);
+        tempRecords.push({
+            date,
+            scan1: shifts.scan1, scan2: shifts.scan2, scan3: shifts.scan3, scan4: shifts.scan4,
+            autoScan1: shifts.autoScan1 || false, autoScan2: shifts.autoScan2 || false, autoScan3: shifts.autoScan3 || false,
+            isHoliday: false, isAbsent: !shifts.scan1 && !shifts.scan4,
+        });
     }
-    const employeePattern = typeof analyzeEmployeePattern === 'function' 
-        ? analyzeEmployeePattern(tempRecords, 30) 
-        : null;
+    const employeePattern = typeof analyzeEmployeePattern === 'function'
+        ? analyzeEmployeePattern(tempRecords, 30) : null;
 
     for (const date of allDates) {
         const dayDate = new Date(date);
@@ -455,191 +517,31 @@ function processEmployeeAttendanceWDD(employee, scans, shopName, month, year) {
         const dayScans = scansByDate[date] || [];
         const isHoliday = holidayDates.includes(date) && dayScans.length === 0;
 
-        if (isHoliday) {
+        if (isHoliday || dayScans.length === 0) {
             totalHolidays++;
             days.push({
                 date, dayOfWeek, isHoliday: true, isAbsent: false, isLeave: false,
-                scan1: null, scan2: null, scan3: null, scan4: null,
-                breakRound: null,
+                scan1: null, scan2: null, scan3: null, scan4: null, breakRound: null,
                 late1Minutes: 0, late1Baht: 0, late2Minutes: 0, late2Baht: 0,
                 note: '', specialNote: '',
             });
             continue;
         }
 
-        if (dayScans.length === 0) {
-            totalHolidays++;
-            days.push({
-                date, dayOfWeek, isHoliday: true, isAbsent: false, isLeave: false,
-                scan1: null, scan2: null, scan3: null, scan4: null,
-                breakRound: null,
-                late1Minutes: 0, late1Baht: 0, late2Minutes: 0, late2Baht: 0,
-                note: '', specialNote: '',
-            });
-            continue;
-        }
+        // Select best shift config by scoring both กะ1 and กะ2 against actual scans
+        const position = detectWddPosition(employee.name, employee, date);
+        const sel = selectBestShiftConfig(dayScans, position, date);
+        const dayConfig = (sel && sel.config) || baseConfig;
+        const shiftNum = (sel && sel.shiftNum) || 1;
 
-        // Find earliest scan to detect shift — exclude cross-midnight scans (00:00-02:59)
-        // because those belong to the previous day's shift end, not the current day's start
-        const nonMidnightScans = dayScans.filter(s => timeToMinutes(s.time) >= 180); // >= 03:00
-        const candidateScans = nonMidnightScans.length > 0 ? nonMidnightScans : dayScans;
-        const sortedScans = [...candidateScans].sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
-        let firstScanTime = sortedScans[0] ? sortedScans[0].time.substring(0, 5) : null;
-
-        // Smart shift detection: ถ้า firstScan >= 11:00 (ตาม threshold จะเป็นกะ 2)
-        // ลองตรวจว่า scan นั้นตกใน shift2 window ของกะ 1 หรือไม่
-        // ถ้าใช่ แสดงว่าพนักงานลืม scan เข้า → ควรเป็นกะ 1
-        // ยกเว้น: ถ้ากะ 2 ไม่มีพัก และ scan ตกใน shift1 window ของกะ 2 → ใช้กะ 2
-        if (firstScanTime && timeToMinutes(firstScanTime) >= timeToMinutes('11:00')) {
-            const position = detectWddPosition(employee.name, employee, date);
-            const weekend = isWeekend(date);
-            // ดึง config ทั้งกะ 1 และกะ 2
-            let shift1Key, shift2Key;
-            if (position === 'เดิน' || position === 'ครัว') {
-                shift1Key = `${position}_1`;
-                shift2Key = `${position}_2`;
-            } else if (position === 'เสิร์ฟ') {
-                const dayType = weekend ? 'weekend' : 'weekday';
-                shift1Key = `เสิร์ฟ_1_${dayType}`;
-                shift2Key = `เสิร์ฟ_2_${dayType}`;
-            }
-            const shift1Config = shift1Key ? WDD_SHIFT_CONFIGS[shift1Key] : null;
-            const shift2Config = shift2Key ? WDD_SHIFT_CONFIGS[shift2Key] : null;
-            const scanMin = timeToMinutes(firstScanTime);
-
-            // ตรวจว่า scan ตกใน shift1 window ของกะ 2 และกะ 2 ไม่มีพัก
-            let isShift2NoBreak = false;
-            if (shift2Config && shift2Config.hasBreak === false) {
-                const s1Start2 = timeToMinutes(shift2Config.shift1Start);
-                const s1End2 = timeToMinutes(shift2Config.shift1End);
-                if (scanMin >= s1Start2 && scanMin <= s1End2) {
-                    isShift2NoBreak = true; // scan เป็น scan เข้างานของกะ 2 ที่ไม่มีพัก
-                }
-            }
-
-            // ถ้าไม่ใช่กะ 2 ที่ไม่มีพัก → ตรวจว่าตกใน shift2 window ของกะ 1 หรือไม่
-            if (!isShift2NoBreak && shift1Config && shift1Config.shift2Start && shift1Config.shift2End) {
-                const s2Start = timeToMinutes(shift1Config.shift2Start);
-                const s2End = timeToMinutes(shift1Config.shift2End);
-                if (scanMin >= s2Start && scanMin <= s2End) {
-                    // scan ตกใน shift2 window ของกะ 1 → ใช้กะ 1
-                    firstScanTime = null; // null = default กะ 1
-                }
-            }
-        }
-
-        // Reverse smart shift detection: firstScan < 11:00 แต่ scans บ่งชี้ว่าเป็นกะ 2
-        // เงื่อนไข: ไม่มี scan ใน break-out window ของกะ 1 แต่มี scan ใน break-out window ของกะ 2 เท่านั้น
-        // → พนักงานเข้าเร็ว (ก่อน 11:00) แต่จริงๆ ทำงานกะ 2 ระบบควรใช้ config กะ 2
-        if (firstScanTime && timeToMinutes(firstScanTime) < timeToMinutes('11:00') && dayScans.length >= 3) {
-            const position = detectWddPosition(employee.name, employee, date);
-            let s1Cfg = null, s2Cfg = null;
-            if (position === 'ครัว' || position === 'เดิน') {
-                s1Cfg = WDD_SHIFT_CONFIGS[`${position}_1`];
-                s2Cfg = WDD_SHIFT_CONFIGS[`${position}_2`];
-            } else if (position === 'เสิร์ฟ') {
-                const dayType = isWeekend(date) ? 'weekend' : 'weekday';
-                s1Cfg = WDD_SHIFT_CONFIGS[`เสิร์ฟ_1_${dayType}`];
-                s2Cfg = WDD_SHIFT_CONFIGS[`เสิร์ฟ_2_${dayType}`];
-            }
-            if (s1Cfg && s2Cfg && s1Cfg.shift2Start && s2Cfg.shift2Start && s2Cfg.hasBreak !== false) {
-                const s1BoStart = timeToMinutes(s1Cfg.shift2Start);
-                const s1BoEnd   = timeToMinutes(s1Cfg.shift2End);
-                const s2BoStart = timeToMinutes(s2Cfg.shift2Start);
-                const s2BoEnd   = timeToMinutes(s2Cfg.shift2End);
-                // ตรวจว่ามี scan ใน break-out window ของกะ 1 หรือไม่ (ไม่นับ first scan ซึ่ง < 11:00)
-                const hasShift1BreakOut = dayScans.some(s => {
-                    const m = timeToMinutes(s.time);
-                    return m >= s1BoStart && m <= s1BoEnd;
-                });
-                // ตรวจว่ามี scan ใน break-out window ของกะ 2 หรือไม่
-                const hasShift2BreakOut = dayScans.some(s => {
-                    const m = timeToMinutes(s.time);
-                    return m >= s2BoStart && m <= s2BoEnd;
-                });
-                // ถ้าไม่มีใน กะ1 แต่มีใน กะ2 → override เป็นกะ 2
-                if (!hasShift1BreakOut && hasShift2BreakOut) {
-                    firstScanTime = '12:00'; // ค่าตัวแทน >= 11:00 เพื่อให้ detectWddShiftNum คืน 2
-                }
-            }
-        }
-
-        // Get per-day WDD config based on position + shift + day type
-        const dayConfig = getWddDayConfig(employee.name, date, firstScanTime, employee) || baseConfig;
-        const shiftNum = detectWddShiftNum(firstScanTime);
-
-        // Use pattern learning to improve scan classification
         const shifts = assignScansToShifts(dayScans, dayConfig, employeePattern);
-
-        // Smart break DL: ถ้ามี scan2 จริง (ไม่ใช่ auto) → ตรวจว่าใกล้ breakOutFixed ของกะไหน
-        // ถ้าใกล้กะอื่นมากกว่า → ใช้ break config ของกะนั้นคำนวณ DL
-        // เช่น ครัว กะ1 breakOut=13:30 DL=15:00, กะ2 breakOut=15:00 DL=16:30
-        // ถ้าออกพัก 14:55 → ใกล้กะ2 (15:00) → DL=16:30
-        let breakShiftNum = shiftNum; // กะที่ใช้คำนวณ break DL
-        if (shifts.scan2 && !shifts.autoScan2) {
-            const position = detectWddPosition(employee.name, employee, date);
-            if (position === 'ครัว' || position === 'เดิน') {
-                const otherShiftNum = shiftNum === 1 ? 2 : 1;
-                const otherKey = `${position}_${otherShiftNum}`;
-                const otherConfig = WDD_SHIFT_CONFIGS[otherKey];
-                if (otherConfig && otherConfig.breakOutFixed && otherConfig.breakInDeadline) {
-                    const scan2Min = timeToMinutes(shifts.scan2);
-                    const curBreakOut = timeToMinutes(dayConfig.breakOutFixed);
-                    const otherBreakOut = timeToMinutes(otherConfig.breakOutFixed);
-                    const distCur = Math.abs(scan2Min - curBreakOut);
-                    const distOther = Math.abs(scan2Min - otherBreakOut);
-                    if (distOther < distCur) {
-                        // ใช้ break config ของกะอื่นคำนวณ DL
-                        const fixedOutMin = timeToMinutes(otherConfig.breakOutFixed);
-                        const baseDeadlineMin = timeToMinutes(otherConfig.breakInDeadline);
-                        let deadlineMin = baseDeadlineMin;
-                        if (scan2Min > fixedOutMin) {
-                            deadlineMin = baseDeadlineMin + (scan2Min - fixedOutMin);
-                        }
-                        const dh = Math.floor(deadlineMin / 60);
-                        const dm = deadlineMin % 60;
-                        shifts.breakDeadline = `${dh.toString().padStart(2, '0')}:${dm.toString().padStart(2, '0')}`;
-                        shifts.breakRound = otherConfig.breakOutFixed;
-                        breakShiftNum = otherShiftNum;
-                    }
-                }
-            } else if (position === 'เสิร์ฟ') {
-                const weekend = isWeekend(date);
-                const dayType = weekend ? 'weekend' : 'weekday';
-                const otherShiftNum = shiftNum === 1 ? 2 : 1;
-                const otherKey = `เสิร์ฟ_${otherShiftNum}_${dayType}`;
-                const otherConfig = WDD_SHIFT_CONFIGS[otherKey];
-                if (otherConfig && otherConfig.breakOutFixed && otherConfig.breakInDeadline) {
-                    const scan2Min = timeToMinutes(shifts.scan2);
-                    const curBreakOut = timeToMinutes(dayConfig.breakOutFixed);
-                    const otherBreakOut = timeToMinutes(otherConfig.breakOutFixed);
-                    const distCur = Math.abs(scan2Min - curBreakOut);
-                    const distOther = Math.abs(scan2Min - otherBreakOut);
-                    if (distOther < distCur) {
-                        const fixedOutMin = timeToMinutes(otherConfig.breakOutFixed);
-                        const baseDeadlineMin = timeToMinutes(otherConfig.breakInDeadline);
-                        let deadlineMin = baseDeadlineMin;
-                        if (scan2Min > fixedOutMin) {
-                            deadlineMin = baseDeadlineMin + (scan2Min - fixedOutMin);
-                        }
-                        const dh = Math.floor(deadlineMin / 60);
-                        const dm = deadlineMin % 60;
-                        shifts.breakDeadline = `${dh.toString().padStart(2, '0')}:${dm.toString().padStart(2, '0')}`;
-                        shifts.breakRound = otherConfig.breakOutFixed;
-                        breakShiftNum = otherShiftNum;
-                    }
-                }
-            }
-        }
-
         const noScans = !shifts.scan1 && !shifts.scan2 && !shifts.scan3 && !shifts.scan4;
 
         if (noScans) {
             totalHolidays++;
             days.push({
                 date, dayOfWeek, isHoliday: true, isAbsent: false, isLeave: false,
-                scan1: null, scan2: null, scan3: null, scan4: null,
-                breakRound: null,
+                scan1: null, scan2: null, scan3: null, scan4: null, breakRound: null,
                 late1Minutes: 0, late1Baht: 0, late2Minutes: 0, late2Baht: 0,
                 note: '', specialNote: '',
             });
@@ -650,28 +552,23 @@ function processEmployeeAttendanceWDD(employee, scans, shopName, month, year) {
         if (isAbsent) totalAbsent++;
         else totalWorkingDays++;
 
-        // Late 1: เข้างานสาย
         const late1 = calculateLateness(shifts.scan1, dayConfig.shift1Deadline, deductRate);
         totalLate1 += late1.baht;
 
-        // Late 2: กลับจากพักสาย (ใช้ breakInDeadline จาก config โดยตรง)
         let late2 = { minutes: 0, baht: 0 };
         if (shifts.breakDeadline) {
             late2 = calculateLateness(shifts.scan3, shifts.breakDeadline, deductRate);
         }
         totalLate2 += late2.baht;
 
-        // Build breakRound label: show actual computed deadline (may differ from config if scan2 was late)
         let breakRoundLabel = null;
         if (shifts.scan2 && shifts.breakDeadline) {
-            breakRoundLabel = `กะ${breakShiftNum} (DL ${shifts.breakDeadline})`;
-        } else if (shifts.breakRound) {
-            breakRoundLabel = shifts.breakRound + ' (DL ' + shifts.breakDeadline + ')';
+            breakRoundLabel = `กะ${shiftNum} (DL ${shifts.breakDeadline})`;
+        } else if (shifts.breakRound && shifts.breakDeadline) {
+            breakRoundLabel = `${shifts.breakRound} (DL ${shifts.breakDeadline})`;
         }
 
-        // Auto note: ถ้าหักเงินรวมวันเดียว > 20 บาท → เตือนให้ตรวจสอบ
-        const totalDayDeduction = late1.baht + late2.baht;
-        const autoNote = totalDayDeduction > 20 ? 'กรุณาตรวจสอบ' : '';
+        const autoNote = (late1.baht + late2.baht) > 20 ? 'กรุณาตรวจสอบ' : '';
 
         days.push({
             date, dayOfWeek, isHoliday: false, isAbsent, isLeave: false,
