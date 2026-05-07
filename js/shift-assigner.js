@@ -130,10 +130,23 @@ function scoreShiftConfig(dayScans, config, shiftNum) {
     const r1 = findFirstScan(deduped, config.shift1Start, config.shift1End, usedIndices);
     if (r1.scan) { score += 3; usedIndices.add(r1.index); }
 
-    // scan2 (พักออก) window match
+    // scan2 (พักออก) window match + proximity to breakOutFixed
     if (config.hasBreak !== false && config.shift2Start) {
         const r2 = findFirstScan(deduped, config.shift2Start, config.shift2End, usedIndices);
-        if (r2.scan) { score += 3; usedIndices.add(r2.index); }
+        if (r2.scan) {
+            score += 3;
+            usedIndices.add(r2.index);
+            // Proximity bonus: scan2 close to breakOutFixed → strong กะ fit
+            if (config.breakOutFixed) {
+                const scan2Min = timeToMinutes(r2.scan.time);
+                const fixedMin = timeToMinutes(config.breakOutFixed);
+                const dist = Math.abs(scan2Min - fixedMin);
+                if (dist <= 15) score += 3;
+                else if (dist <= 30) score += 2;
+                else if (dist > 90) score -= 2;
+                else if (dist > 60) score -= 1;
+            }
+        }
     }
 
     // scan3 (พักเข้า) window match
