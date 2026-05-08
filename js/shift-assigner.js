@@ -2,8 +2,9 @@
 // Shift Assigner - Process scans into attendance
 // ============================================
 
-// ตัด scan ซ้ำ: ถ้า 2 scan ห่างกัน < thresholdMinutes → เก็บครั้งแรก ตัดครั้งที่ 2 ทิ้ง
-function deduplicateScans(scans, thresholdMinutes = 5) {
+// ตัด scan ซ้ำภายในวันเดียวของพนักงานคนเดียว: ถ้า 2 scan ห่างกัน < thresholdMinutes → เก็บครั้งแรก ตัดครั้งที่ 2 ทิ้ง
+// หมายเหตุ: ใช้กับ scans ของพนักงาน 1 คน ในวันเดียวเท่านั้น สำหรับ dedup ข้ามคน/ข้ามวันใช้ deduplicateScans ใน excel-parser.js
+function deduplicateDayScans(scans, thresholdMinutes = 5) {
     if (!scans || scans.length <= 1) return scans;
     const sorted = [...scans].sort((a, b) => {
         let ma = timeToMinutes(a.time);
@@ -112,7 +113,7 @@ function findLastScan(scans, windowStart, windowEnd, usedIndices) {
 function scoreShiftConfig(dayScans, config, shiftNum) {
     if (!config || !dayScans || dayScans.length === 0) return -Infinity;
 
-    const deduped = deduplicateScans([...dayScans]);
+    const deduped = deduplicateDayScans([...dayScans]);
     let score = 0;
     const usedIndices = new Set();
 
@@ -216,7 +217,7 @@ function assignScansToShifts(scans, config, employeePattern = null) {
         return { scan1: null, scan2: null, scan3: null, scan4: null, breakRound: null, breakDeadline: null };
     }
 
-    scans = deduplicateScans(scans);
+    scans = deduplicateDayScans(scans);
 
     const usedIndices = new Set();
 
