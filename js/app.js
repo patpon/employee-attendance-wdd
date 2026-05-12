@@ -33,7 +33,7 @@ let currentUser = { username: '', displayName: '', role: 'viewer' };
 
 // Role-based menu permissions
 const ROLE_PERMISSIONS = {
-    admin:    ['dashboard', 'import', 'attendance', 'reports', 'bonus', 'settings'],
+    admin:    ['dashboard', 'import', 'attendance', 'shift-rules', 'reports', 'bonus', 'settings'],
     importer: ['import'],
 };
 
@@ -123,6 +123,7 @@ function renderPage(page) {
         case 'dashboard': renderDashboard(main); break;
         case 'import': renderImport(main); break;
         case 'attendance': renderAttendance(main); break;
+        case 'shift-rules': renderShiftRules(main); break;
         case 'reports': renderReports(main); break;
         case 'bonus': renderBonus(main); break;
         case 'settings': renderSettings(main); break;
@@ -721,6 +722,7 @@ function renderAttList() {
                         ${statusBadge}
                     </div>
                     <div class="flex gap-1" style="margin-left:4px;" onclick="event.stopPropagation()">
+                        <button class="btn-icon" onclick="showEmployeeShiftPopup('${escHtml(record.empName)}')" title="ดูเงื่อนไขกะของตำแหน่งนี้" style="font-size:14px;padding:4px 6px;color:#2563eb;">&#128214;</button>
                         <button class="btn-icon" onclick="editEmployeeName('${record.employeeId}','${escHtml(record.empName)}')" title="แก้ไขชื่อ" style="font-size:14px;padding:4px 6px;">&#9998;</button>
                         <button class="btn-icon" onclick="deleteEmployee('${record.employeeId}','${escHtml(record.empName)}')" title="ลบพนักงาน" style="font-size:14px;padding:4px 6px;color:#ef4444;">&#128465;</button>
                     </div>
@@ -776,6 +778,21 @@ function renderAttDetail(record, rIdx) {
                             const isAutoScan3 = !day.isHoliday && day.autoScan3 && day.scan3;
                             // ⚠ ลืม scan พักเข้า: มี scan2 แต่ไม่มี scan3 (กรณี auto-fill ไม่ทำงาน)
                             const forgotScan3 = !day.isHoliday && day.scan2 && !day.scan3 && day.breakRound;
+                            // Tooltip สำหรับ "รอบพัก" column - แสดง config ของวันนั้น
+                            let breakTooltip = '';
+                            if (!day.isHoliday && day.breakRound && typeof getWddDayConfig === 'function') {
+                                try {
+                                    const cfg = getWddDayConfig(record.empName, day.date, day.scan1, null);
+                                    if (cfg) {
+                                        const pos = (typeof detectWddPosition === 'function') ? detectWddPosition(record.empName) : '';
+                                        const shiftN = (typeof detectWddShiftNum === 'function') ? detectWddShiftNum(day.scan1) : '';
+                                        const weekend = (typeof isWeekend === 'function') ? isWeekend(day.date) : false;
+                                        const dayTypeLabel = (pos === 'เสิร์ฟ') ? (weekend ? ' · ส-อา' : ' · จ-ศ') : '';
+                                        breakTooltip = `${pos} กะ${shiftN}${dayTypeLabel} | เข้า ${cfg.shift1Start||'-'}-${cfg.shift1End||'-'} (DL ${cfg.shift1Deadline||'-'}) | ` +
+                                            (cfg.hasBreak ? `พักออก ${cfg.breakOutFixed||'-'} | พักเข้า DL ${cfg.breakInDeadline||'-'}` : 'ไม่มีพัก');
+                                    }
+                                } catch (e) {}
+                            }
                             return `
                             <tr class="${day.isHoliday ? 'holiday' : day.isAbsent ? 'absent' : ''}">
                                 <td style="color:#9ca3af;">${idx + 1}</td>
@@ -788,7 +805,7 @@ function renderAttDetail(record, rIdx) {
                                 <td style="${!day.isHoliday && s4empty && anyEmpty ? emptyCellStyle : ''}">${day.isHoliday ? '-' : '<input type="time" class="time-input" value="'+(day.scan4||'')+'" onchange="updateScanTime('+rIdx+','+idx+',4,this.value)">'}</td>
                                 <td style="${day.waiveLate1 ? 'text-decoration:line-through;color:#9ca3af;' : ''}">${day.late1Minutes > 0 ? minutesToTime(day.late1Minutes) : ''}</td>
                                 <td class="text-red-600" style="${day.waiveLate1 ? 'text-decoration:line-through;color:#9ca3af;' : ''}">${day.late1Baht > 0 ? day.late1Baht : 0}</td>
-                                <td class="text-center">${day.isHoliday ? '-' : (breakDeadline ? '<span class="badge badge-blue" style="font-size:10px;">'+breakDeadline+'</span>' + (forgotScan3 ? '<span title="ไม่มี scan พักเข้า ไม่สามารถตรวจสอบได้" style="color:#ef4444;font-size:11px;font-weight:700;margin-left:3px;">?</span>' : '') : '')}</td>
+                                <td class="text-center">${day.isHoliday ? '-' : (breakDeadline ? '<span class="badge badge-blue" style="font-size:10px;cursor:help;" title="'+escHtml(breakTooltip)+'">'+breakDeadline+'</span>' + (forgotScan3 ? '<span title="ไม่มี scan พักเข้า ไม่สามารถตรวจสอบได้" style="color:#ef4444;font-size:11px;font-weight:700;margin-left:3px;">?</span>' : '') : '')}</td>
                                 <td style="${day.waiveLate2 ? 'text-decoration:line-through;color:#9ca3af;' : ''}">${day.late2Minutes > 0 ? minutesToTime(day.late2Minutes) : ''}</td>
                                 <td class="text-red-600" style="${day.waiveLate2 ? 'text-decoration:line-through;color:#9ca3af;' : ''}">${day.late2Baht > 0 ? day.late2Baht : 0}</td>
                                 <td>${day.isHoliday ? '' : ((day.late1Baht > 0 || day.late2Baht > 0 || day.waiveLate1 || day.waiveLate2) ? '<div style="display:flex;gap:2px;justify-content:center;">' + (day.late1Baht > 0 || day.waiveLate1 ? '<button onclick="toggleWaive('+rIdx+','+idx+',1)" title="'+(day.waiveLate1?'ยกเลิกยกเว้นเข้าสาย':'ยกเว้นเข้าสาย')+'" style="font-size:10px;padding:2px 6px;border:1px solid '+(day.waiveLate1?'#059669':'#f59e0b')+';background:'+(day.waiveLate1?'#ecfdf5':'#fffbeb')+';color:'+(day.waiveLate1?'#059669':'#d97706')+';border-radius:4px;cursor:pointer;white-space:nowrap;">'+(day.waiveLate1?'&#10003; เข้า':'เข้า')+'</button>' : '') + (day.late2Baht > 0 || day.waiveLate2 ? '<button onclick="toggleWaive('+rIdx+','+idx+',2)" title="'+(day.waiveLate2?'ยกเลิกยกเว้นพักสาย':'ยกเว้นพักสาย')+'" style="font-size:10px;padding:2px 6px;border:1px solid '+(day.waiveLate2?'#059669':'#f59e0b')+';background:'+(day.waiveLate2?'#ecfdf5':'#fffbeb')+';color:'+(day.waiveLate2?'#059669':'#d97706')+';border-radius:4px;cursor:pointer;white-space:nowrap;">'+(day.waiveLate2?'&#10003; พัก':'พัก')+'</button>' : '') + '</div>' : '')}</td>
